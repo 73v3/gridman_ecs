@@ -1,0 +1,526 @@
+<assets.rs>
+// assets.rs
+use crate::components::GameState;
+use bevy::audio::AudioSource;
+use bevy::prelude::*;
+
+pub struct AssetsPlugin;
+
+impl Plugin for AssetsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(GameState::Loading), load_assets);
+    }
+}
+
+#[derive(Resource, Clone)]
+pub struct Palette {
+    pub colors: Vec<Color>,
+}
+
+#[derive(Resource)]
+pub struct GameAssets {
+    pub wall_texture: Handle<Image>,
+    pub font: Handle<Font>,
+    pub shoot_sfx: Handle<AudioSource>,
+    pub palette: Palette,
+}
+
+fn load_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    let palette = Palette {
+        // https://lospec.com/palette-list/gilt-8 by tomicit0
+        colors: vec![
+            Color::srgb(0.631, 0.224, 0.333),
+            Color::srgb(0.761, 0.431, 0.522),
+            Color::srgb(0.949, 0.729, 0.800),
+            Color::srgb(1.000, 0.949, 0.918),
+            Color::srgb(0.984, 0.906, 0.412),
+            Color::srgb(0.894, 0.725, 0.169),
+            Color::srgb(0.769, 0.416, 0.176),
+            Color::srgb(0.506, 0.173, 0.137),
+        ],
+    };
+
+    commands.insert_resource(GameAssets {
+        wall_texture: asset_server.load("textures/wall.png"),
+        font: asset_server.load("fonts/press_start_2p/PressStart2P-Regular.ttf"),
+        shoot_sfx: asset_server.load("sfx/shoot.wav"),
+        palette,
+    });
+    next_state.set(GameState::Title);
+}
+</assets.rs>
+
+<audio.rs>
+// audio.rs
+use bevy::audio::{AudioPlayer, PlaybackSettings, Volume};
+use bevy::prelude::*;
+
+pub struct AudioPlugin;
+
+impl Plugin for AudioPlugin {
+    fn build(&self, _app: &mut App) {
+        // No additional setup needed, as AudioPlugin is included in DefaultPlugins
+    }
+}
+
+/// Plays a sound effect by spawning an entity that will despawn automatically after playback.
+/// This is efficient for one-shot SFX and handles cleanup to avoid entity buildup.
+pub fn play(commands: &mut Commands, audio: Handle<AudioSource>) {
+    commands.spawn((AudioPlayer::new(audio), PlaybackSettings::DESPAWN));
+}
+
+pub fn play_with_volume(commands: &mut Commands, audio: Handle<AudioSource>, volume: f32) {
+    commands.spawn((
+        AudioPlayer::new(audio),
+        PlaybackSettings {
+            volume: Volume::Linear(volume),
+            ..PlaybackSettings::DESPAWN
+        },
+    ));
+}
+</audio.rs>
+
+<components.rs>
+use bevy::prelude::*;
+
+#[derive(Clone, Copy, Default, Eq, PartialEq, Hash, States, Debug)]
+pub enum GameState {
+    #[default]
+    Loading,
+    Title,
+    Playing,
+}
+
+#[derive(Component)]
+pub struct Dead;
+
+#[derive(Component)]
+pub struct GameEntity;
+
+#[derive(Component)]
+pub struct Velocity {
+    pub velocity: Vec2,
+}
+
+#[derive(Event)]
+pub struct PlayerDied;
+
+#[derive(Resource)]
+pub struct GameSpeed {
+    pub value: f32,
+}
+
+pub struct ComponentsPlugin;
+
+impl Plugin for ComponentsPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(GameSpeed { value: 1.0 }).add_systems(
+            Update,
+            (update_velocity)
+                .chain()
+                .run_if(in_state(GameState::Playing)),
+        );
+    }
+}
+
+pub fn update_velocity(mut query: Query<(&Velocity, &mut Transform)>, time: Res<Time>) {
+    for (velocity, mut transform) in query.iter_mut() {
+        transform.translation.x += velocity.velocity.x * time.delta_secs();
+        transform.translation.y += velocity.velocity.y * time.delta_secs();
+    }
+}
+</components.rs>
+
+<custom_window.rs>
+// custom_window_plugin.rs -> assistant: leave this comment in place, it orients the AI
+use bevy::{prelude::*, window::PresentMode, window::WindowMode, window::WindowResolution};
+
+const GAME_TITLE: &str = "Gridman ECS";
+const BACKGROUND_COLOR: Color = Color::srgb(0.1, 0.1, 0.1);
+
+pub struct CustomWindowPlugin;
+
+impl Plugin for CustomWindowPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(ClearColor(BACKGROUND_COLOR))
+            .add_plugins(
+                DefaultPlugins
+                    .set(bevy::window::WindowPlugin {
+                        primary_window: Some(Window {
+                            title: GAME_TITLE.to_string(),
+                            present_mode: PresentMode::AutoVsync,
+                            mode: WindowMode::Windowed,
+                            position: WindowPosition::Centered(MonitorSelection::Primary),
+                            resolution: WindowResolution::new(800.0, 600.0),
+                            ..default()
+                        }),
+                        ..default()
+                    })
+                    .set(ImagePlugin::default_nearest()),
+            )
+            .add_systems(Update, close_on_esc);
+    }
+}
+
+pub fn close_on_esc(
+    mut commands: Commands,
+    focused_windows: Query<(Entity, &Window)>,
+    input: Res<ButtonInput<KeyCode>>,
+) {
+    for (window, focus) in focused_windows.iter() {
+        if !focus.focused {
+            continue;
+        }
+
+        if input.just_pressed(KeyCode::Escape) {
+            commands.entity(window).despawn();
+        }
+    }
+}
+</custom_window.rs>
+
+<debug.rs>
+use crate::components::GameState;
+use bevy::prelude::*;
+
+pub struct DebugPlugin;
+
+impl Plugin for DebugPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, test_clear.run_if(in_state(GameState::Playing)));
+    }
+}
+
+fn test_clear(keys: Res<ButtonInput<KeyCode>>) {
+    if keys.just_pressed(KeyCode::End) {
+        info!("END pressed");
+    }
+}
+</debug.rs>
+
+<game.rs>
+use bevy::prelude::*;
+
+use crate::assets;
+use crate::audio;
+use crate::collate_src;
+use crate::components;
+use crate::debug;
+use crate::random;
+use crate::resolution;
+use crate::score;
+use crate::title;
+pub struct GamePlugin;
+
+impl Plugin for GamePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((
+            collate_src::CollateSrcPlugin,
+            components::ComponentsPlugin,
+            resolution::ResolutionPlugin,
+            random::RandomPlugin,
+            title::TitlePlugin,
+            assets::AssetsPlugin,
+            score::ScorePlugin,
+            audio::AudioPlugin,
+            debug::DebugPlugin,
+        ))
+        .add_systems(Startup, setup_scene);
+    }
+}
+fn setup_scene(mut commands: Commands) {
+    commands.spawn(Camera2d::default());
+}
+</game.rs>
+
+<main.rs>
+use bevy::prelude::*;
+
+//link our modules to our project
+
+pub mod assets;
+pub mod audio;
+pub mod collate_src;
+pub mod components;
+pub mod custom_window;
+pub mod debug;
+pub mod game;
+pub mod random;
+pub mod resolution;
+pub mod score;
+pub mod title;
+
+fn main() {
+    App::new()
+        .add_plugins((custom_window::CustomWindowPlugin, game::GamePlugin))
+        .run();
+}
+</main.rs>
+
+<random.rs>
+// src/random.rs
+
+use bevy::prelude::*;
+// Import WyRand and the necessary query components from bevy_rand
+use bevy_rand::prelude::{EntropyPlugin, GlobalEntropy, WyRand};
+
+use crate::assets::GameAssets;
+use rand_core::RngCore;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Plugin for handling random number generation with WyRand
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RandomPlugin;
+
+impl Plugin for RandomPlugin {
+    fn build(&self, app: &mut App) {
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_nanos() as u64;
+
+        // The `with_seed` function expects a byte array.
+        // We convert the u64 seed to a little-endian byte array.
+        app.add_plugins(EntropyPlugin::<WyRand>::with_seed(seed.to_le_bytes()));
+    }
+}
+
+pub fn random_float(rng: &mut GlobalEntropy<WyRand>) -> f32 {
+    (rng.next_u32() as f32) / (u32::MAX as f32)
+}
+
+/// Returns a random color from the GameAssets palette
+pub fn random_colour(rng: &mut GlobalEntropy<WyRand>, game_assets: &Res<GameAssets>) -> Color {
+    let palette = &game_assets.palette;
+    let index = (random_float(rng) * palette.colors.len() as f32) as usize;
+    palette.colors[index]
+}
+</random.rs>
+
+<resolution.rs>
+use bevy::prelude::*;
+
+pub struct ResolutionPlugin;
+
+impl Plugin for ResolutionPlugin{
+    fn build(&self, app: &mut App) {
+        //prestartup runs before all of our in game startup functions
+        app.add_systems(PreStartup,setup_resolution);
+    }
+}
+
+#[derive(Resource)]
+pub struct Resolution{
+    //pixel dimensions of our screen in the form of a 2d vector (width,height)
+    pub screen_dimensions : Vec2,
+    //the ratio of a pixel in our sprites to one on screen
+    pub pixel_ratio : f32,
+}
+fn setup_resolution(mut commands : Commands,window_query : Query<&Window>)
+{
+    //query for window information
+    let window = window_query.single().unwrap();
+
+    commands.insert_resource(Resolution{
+        screen_dimensions : Vec2::new(window.width(),window.height()),
+        pixel_ratio : 2.0,
+    });
+}</resolution.rs>
+
+<score.rs>
+// score.rs
+use bevy::prelude::*;
+
+use crate::assets::GameAssets;
+use crate::components::{GameEntity, GameState};
+
+pub struct ScorePlugin;
+
+impl Plugin for ScorePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_event::<ScoreChanged>()
+            .add_systems(OnEnter(GameState::Playing), setup_score)
+            .add_systems(
+                Update,
+                (update_score, update_score_display)
+                    .chain()
+                    .run_if(in_state(GameState::Playing)),
+            );
+    }
+}
+
+#[derive(Resource)]
+pub struct Score {
+    pub value: u32,
+}
+
+#[derive(Event)]
+pub struct ScoreChanged;
+
+#[derive(Component)]
+struct ScoreText;
+
+fn setup_score(mut commands: Commands, game_assets: Res<GameAssets>) {
+    commands.insert_resource(Score { value: 0 });
+
+    let root = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(10.0),
+                width: Val::Percent(100.0),
+                height: Val::Px(60.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::FlexStart,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            GameEntity,
+        ))
+        .id();
+
+    commands.entity(root).with_children(|parent| {
+        parent.spawn((
+            Text::new("0000".to_string()),
+            TextFont {
+                font: game_assets.font.clone(),
+                font_size: 16.0,
+                ..default()
+            },
+            TextColor(game_assets.palette.colors[3]),
+            TextLayout::new_with_justify(JustifyText::Center),
+            ScoreText,
+        ));
+    });
+}
+
+fn update_score(mut score: ResMut<Score>, mut events: EventReader<ScoreChanged>) {
+    for _ in events.read() {
+        score.value += 1;
+        if score.value > 9999 {
+            score.value = 9999;
+        }
+    }
+}
+
+fn update_score_display(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>) {
+    if score.is_changed() {
+        if let Ok(mut text) = query.single_mut() {
+            text.0 = format!("{:04}", score.value);
+        }
+    }
+}
+</score.rs>
+
+<title.rs>
+use crate::assets::GameAssets;
+use crate::components::{GameEntity, GameState};
+use bevy::prelude::*;
+use bevy::state::app::AppExtStates;
+
+pub struct TitlePlugin;
+
+impl Plugin for TitlePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_state::<GameState>()
+            .add_systems(OnEnter(GameState::Title), (spawn_title, cleanup_game))
+            .add_systems(OnExit(GameState::Title), despawn_title)
+            .add_systems(
+                Update,
+                handle_title_input.run_if(in_state(GameState::Title)),
+            );
+    }
+}
+
+#[derive(Component)]
+struct TitleText;
+
+fn spawn_title(mut commands: Commands, game_assets: Res<GameAssets>) {
+    let root = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            TitleText,
+        ))
+        .id();
+
+    commands.entity(root).with_children(|parent| {
+        parent
+            .spawn(Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Start,
+                ..default()
+            })
+            .with_children(|title_row| {
+                title_row.spawn((
+                    Text::new("GRIDMAN"),
+                    TextFont {
+                        font: game_assets.font.clone(),
+                        font_size: 40.0,
+                        ..default()
+                    },
+                    TextColor(game_assets.palette.colors[3]),
+                    TextLayout::new_with_justify(JustifyText::Center),
+                ));
+
+                title_row.spawn((
+                    Text::new("ECS"),
+                    TextFont {
+                        font: game_assets.font.clone(),
+                        font_size: 12.0, // Smaller font size for superscript
+                        ..default()
+                    },
+                    TextColor(game_assets.palette.colors[2]),
+                    TextLayout::new_with_justify(JustifyText::Left),
+                ));
+            });
+
+        parent.spawn((
+            Text::new("FIRE TO PLAY"),
+            TextFont {
+                font: game_assets.font.clone(),
+                font_size: 20.0,
+                ..default()
+            },
+            TextColor(game_assets.palette.colors[4]),
+            TextLayout::new_with_justify(JustifyText::Center),
+        ));
+    });
+}
+
+fn despawn_title(mut commands: Commands, query: Query<Entity, With<TitleText>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// Only runs if displaying title screen
+fn handle_title_input(
+    mut next_state: ResMut<NextState<GameState>>,
+    keys: Res<ButtonInput<KeyCode>>,
+) {
+    if keys.just_pressed(KeyCode::Space) {
+        next_state.set(GameState::Playing);
+    }
+}
+
+fn cleanup_game(mut commands: Commands, query: Query<Entity, With<GameEntity>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
+</title.rs>
+
