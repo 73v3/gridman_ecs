@@ -9,6 +9,7 @@ use crate::random;
 use crate::resolution;
 use crate::score;
 use crate::title;
+use crate::ui_scaling;
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -23,6 +24,7 @@ impl Plugin for GamePlugin {
             score::ScorePlugin,
             audio::AudioPlugin,
             debug::DebugPlugin,
+            ui_scaling::UiScalingPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }

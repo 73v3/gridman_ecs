@@ -29,7 +29,7 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
 
         commands.insert_resource(Resolution {
             screen_dimensions: Vec2::new(width, height),
-            pixel_ratio: 2.0,
+            pixel_ratio: window.scale_factor() as f32,
             base_resolution: Vec2::new(800.0, 600.0), // Design resolution
         });
     } else {
@@ -37,7 +37,7 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
         // Fallback to default resolution
         commands.insert_resource(Resolution {
             screen_dimensions: Vec2::new(800.0, 600.0),
-            pixel_ratio: 2.0,
+            pixel_ratio: 1.0,
             base_resolution: Vec2::new(800.0, 600.0),
         });
     }
@@ -46,12 +46,16 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
 fn handle_window_resize(
     mut resize_events: EventReader<WindowResized>,
     mut resolution: ResMut<Resolution>,
-    window_query: Query<Entity, With<PrimaryWindow>>,
+    // Query for the Entity and the Window component of the primary window
+    window_query: Query<(Entity, &Window), With<PrimaryWindow>>,
 ) {
-    if let Ok(primary_window) = window_query.single() {
+    // Get the entity and component for the primary window
+    if let Ok((primary_window_entity, primary_window)) = window_query.single() {
         for event in resize_events.read() {
-            if event.window == primary_window {
+            // Compare the event's entity with the primary window's entity
+            if event.window == primary_window_entity {
                 resolution.screen_dimensions = Vec2::new(event.width, event.height);
+                resolution.pixel_ratio = primary_window.scale_factor() as f32;
                 info!("Window resized to {}x{}", event.width, event.height);
             }
         }

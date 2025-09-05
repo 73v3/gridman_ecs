@@ -13,6 +13,7 @@ pub mod random;
 pub mod resolution;
 pub mod score;
 pub mod title;
+pub mod ui_scaling;
 
 fn main() {
     App::new()
