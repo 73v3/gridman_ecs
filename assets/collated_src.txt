@@ -303,33 +303,84 @@ pub fn random_colour(rng: &mut GlobalEntropy<WyRand>, game_assets: &Res<GameAsse
 
 <resolution.rs>
 use bevy::prelude::*;
+use bevy::window::{PrimaryWindow, WindowResized};
 
 pub struct ResolutionPlugin;
 
-impl Plugin for ResolutionPlugin{
+impl Plugin for ResolutionPlugin {
     fn build(&self, app: &mut App) {
-        //prestartup runs before all of our in game startup functions
-        app.add_systems(PreStartup,setup_resolution);
+        app.add_systems(PreStartup, setup_resolution).add_systems(
+            Update,
+            (handle_window_resize, update_camera_projection).chain(),
+        );
     }
 }
 
 #[derive(Resource)]
-pub struct Resolution{
-    //pixel dimensions of our screen in the form of a 2d vector (width,height)
-    pub screen_dimensions : Vec2,
-    //the ratio of a pixel in our sprites to one on screen
-    pub pixel_ratio : f32,
+pub struct Resolution {
+    // Pixel dimensions of the screen (width, height)
+    pub screen_dimensions: Vec2,
+    // The ratio of a pixel in our sprites to one on screen
+    pub pixel_ratio: f32,
+    // Base resolution for scaling (e.g., the design resolution)
+    pub base_resolution: Vec2,
 }
-fn setup_resolution(mut commands : Commands,window_query : Query<&Window>)
-{
-    //query for window information
-    let window = window_query.single().unwrap();
 
-    commands.insert_resource(Resolution{
-        screen_dimensions : Vec2::new(window.width(),window.height()),
-        pixel_ratio : 2.0,
-    });
-}</resolution.rs>
+fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
+    if let Ok(window) = window_query.single() {
+        let width = window.resolution.width();
+        let height = window.resolution.height();
+
+        commands.insert_resource(Resolution {
+            screen_dimensions: Vec2::new(width, height),
+            pixel_ratio: 2.0,
+            base_resolution: Vec2::new(800.0, 600.0), // Design resolution
+        });
+    } else {
+        error!("No primary window found during resolution setup");
+        // Fallback to default resolution
+        commands.insert_resource(Resolution {
+            screen_dimensions: Vec2::new(800.0, 600.0),
+            pixel_ratio: 2.0,
+            base_resolution: Vec2::new(800.0, 600.0),
+        });
+    }
+}
+
+fn handle_window_resize(
+    mut resize_events: EventReader<WindowResized>,
+    mut resolution: ResMut<Resolution>,
+    window_query: Query<Entity, With<PrimaryWindow>>,
+) {
+    if let Ok(primary_window) = window_query.single() {
+        for event in resize_events.read() {
+            if event.window == primary_window {
+                resolution.screen_dimensions = Vec2::new(event.width, event.height);
+                info!("Window resized to {}x{}", event.width, event.height);
+            }
+        }
+    }
+}
+
+fn update_camera_projection(
+    resolution: Res<Resolution>,
+    mut query: Query<&mut Projection, With<Camera2d>>,
+) {
+    if resolution.is_changed() {
+        for mut projection in query.iter_mut() {
+            if let Projection::Orthographic(ref mut ortho) = &mut *projection {
+                let scale_x = resolution.screen_dimensions.x / resolution.base_resolution.x;
+                let scale_y = resolution.screen_dimensions.y / resolution.base_resolution.y;
+                // Use the smaller scale to maintain aspect ratio and avoid stretching
+                let scale = scale_x.min(scale_y) * resolution.pixel_ratio;
+
+                ortho.scale = 1.0 / scale;
+                info!("Updated camera projection scale: {}", ortho.scale);
+            }
+        }
+    }
+}
+</resolution.rs>
 
 <score.rs>
 // score.rs
