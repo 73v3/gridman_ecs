@@ -5,6 +5,7 @@ use crate::audio;
 use crate::collate_src;
 use crate::components;
 use crate::debug;
+use crate::map;
 use crate::random;
 use crate::resolution;
 use crate::score;
@@ -27,6 +28,7 @@ impl Plugin for GamePlugin {
             debug::DebugPlugin,
             ui_scaling::UiScalingPlugin,
             tilemap::TilemapPlugin,
+            map::MapPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }

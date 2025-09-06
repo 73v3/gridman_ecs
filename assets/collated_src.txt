@@ -210,6 +210,7 @@ use crate::audio;
 use crate::collate_src;
 use crate::components;
 use crate::debug;
+use crate::map;
 use crate::random;
 use crate::resolution;
 use crate::score;
@@ -232,6 +233,7 @@ impl Plugin for GamePlugin {
             debug::DebugPlugin,
             ui_scaling::UiScalingPlugin,
             tilemap::TilemapPlugin,
+            map::MapPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }
@@ -253,6 +255,7 @@ pub mod components;
 pub mod custom_window;
 pub mod debug;
 pub mod game;
+pub mod map;
 pub mod random;
 pub mod resolution;
 pub mod score;
@@ -266,6 +269,65 @@ fn main() {
         .run();
 }
 </main.rs>
+
+<map.rs>
+use crate::components::GameState;
+use bevy::prelude::*;
+
+#[derive(Resource)]
+struct MapHandle(Handle<Image>);
+
+#[derive(Resource)]
+pub struct MapData {
+    pub width: u32,
+    pub height: u32,
+    pub is_wall: Vec<bool>,
+}
+
+pub struct MapPlugin;
+
+impl Plugin for MapPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(GameState::Loading), load_map)
+            .add_systems(Update, process_map.run_if(resource_exists::<MapHandle>));
+    }
+}
+
+fn load_map(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handle: Handle<Image> = asset_server.load("maps/0.png");
+    commands.insert_resource(MapHandle(handle));
+}
+
+fn process_map(mut commands: Commands, map_handle: Res<MapHandle>, images: Res<Assets<Image>>) {
+    if let Some(image) = images.get(&map_handle.0) {
+        let width = image.size().x as u32;
+        let height = image.size().y as u32;
+        let mut is_wall = vec![false; (width * height) as usize];
+
+        if let Some(data) = &image.data {
+            for y in 0..height {
+                for x in 0..width {
+                    let idx = ((y * width + x) * 4) as usize;
+                    // Ensure we don't go out of bounds
+                    if idx + 2 < data.len() {
+                        let r = data[idx] as f32 / 255.0;
+                        let g = data[idx + 1] as f32 / 255.0;
+                        let b = data[idx + 2] as f32 / 255.0;
+                        is_wall[(y * width + x) as usize] = r > 0.0 || g > 0.0 || b > 0.0;
+                    }
+                }
+            }
+        }
+
+        commands.insert_resource(MapData {
+            width,
+            height,
+            is_wall,
+        });
+        commands.remove_resource::<MapHandle>();
+    }
+}
+</map.rs>
 
 <random.rs>
 // src/random.rs
@@ -322,8 +384,8 @@ impl Plugin for ResolutionPlugin {
     }
 }
 
-// Increasing this value will return in the projection zooming out, showing more of the render area
-const MASTER_SCALE: f32 = 40.0;
+// Increasing this value will result in the projection zooming out, showing more of the render area
+const MASTER_SCALE: f32 = 4.0;
 
 #[derive(Resource)]
 pub struct Resolution {
@@ -492,6 +554,7 @@ use bevy::sprite::Sprite;
 
 use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
+use crate::map::MapData;
 
 const TILE_SIZE: f32 = 64.0;
 const RENDERED_WIDTH: usize = 28;
@@ -519,7 +582,10 @@ impl Plugin for TilemapPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(MapOffset(IVec2::ZERO))
             .insert_resource(TileOffset(Vec2::ZERO))
-            .add_systems(OnEnter(GameState::Playing), spawn_tilemap)
+            .add_systems(
+                OnEnter(GameState::Playing),
+                (setup_initial_offset, spawn_tilemap).chain(),
+            )
             .add_systems(
                 Update,
                 (
@@ -533,7 +599,21 @@ impl Plugin for TilemapPlugin {
     }
 }
 
-fn spawn_tilemap(mut commands: Commands, game_assets: Res<GameAssets>) {
+fn setup_initial_offset(map_data: Res<MapData>, mut map_offset: ResMut<MapOffset>) {
+    let view_w = RENDERED_WIDTH as i32;
+    let view_h = RENDERED_HEIGHT as i32;
+    let map_w = map_data.width as i32;
+    let map_h = map_data.height as i32;
+    map_offset.0.x = ((map_w - view_w) / 2).max(0);
+    map_offset.0.y = ((map_h - view_h) / 2).max(0);
+}
+
+fn spawn_tilemap(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    map_data: Res<MapData>,
+    map_offset: Res<MapOffset>,
+) {
     let wall_texture = game_assets.wall_texture.clone();
 
     for gx in 0..RENDERED_WIDTH {
@@ -543,8 +623,8 @@ fn spawn_tilemap(mut commands: Commands, game_assets: Res<GameAssets>) {
             let base_pos = Vec2::new(base_x, base_y);
 
             let grid_pos = IVec2::new(gx as i32, gy as i32);
-            let map_pos = grid_pos; // Initial map_offset is ZERO
-            let color = get_tile_color(map_pos, &game_assets);
+            let map_pos = grid_pos + map_offset.0;
+            let color = get_tile_color(map_pos, &game_assets, &map_data);
 
             commands.spawn((
                 Sprite {
@@ -566,8 +646,9 @@ fn handle_scroll_input(
     mut map_offset: ResMut<MapOffset>,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    map_data: Res<MapData>,
 ) {
-    let speed = 200.0; // pixels per second, adjust as needed
+    let speed = 800.0; // pixels per second, adjust as needed
     let dt = time.delta_secs();
 
     if keys.pressed(KeyCode::ArrowRight) {
@@ -583,23 +664,24 @@ fn handle_scroll_input(
         tile_offset.0.y += speed * dt;
     }
 
-    // Handle x wrapping
-    if tile_offset.0.x < -TILE_SIZE {
-        tile_offset.0.x += TILE_SIZE;
-        map_offset.0.x += 1;
-    } else if tile_offset.0.x > TILE_SIZE {
-        tile_offset.0.x -= TILE_SIZE;
-        map_offset.0.x -= 1;
-    }
+    let map_width_i = map_data.width as i32;
+    let map_height_i = map_data.height as i32;
+    let view_width = RENDERED_WIDTH as i32;
+    let view_height = RENDERED_HEIGHT as i32;
+    let max_map_x = (map_width_i - view_width).max(0);
+    let max_map_y = (map_height_i - view_height).max(0);
 
-    // Handle y wrapping
-    if tile_offset.0.y < -TILE_SIZE {
-        tile_offset.0.y += TILE_SIZE;
-        map_offset.0.y += 1;
-    } else if tile_offset.0.y > TILE_SIZE {
-        tile_offset.0.y -= TILE_SIZE;
-        map_offset.0.y -= 1;
-    }
+    // Clamp x
+    let mut view_left = map_offset.0.x as f32 - tile_offset.0.x / TILE_SIZE;
+    view_left = view_left.clamp(0.0, max_map_x as f32);
+    map_offset.0.x = view_left.floor() as i32;
+    tile_offset.0.x = -(view_left - map_offset.0.x as f32) * TILE_SIZE;
+
+    // Clamp y
+    let mut view_top = map_offset.0.y as f32 - tile_offset.0.y / TILE_SIZE;
+    view_top = view_top.clamp(0.0, max_map_y as f32);
+    map_offset.0.y = view_top.floor() as i32;
+    tile_offset.0.y = -(view_top - map_offset.0.y as f32) * TILE_SIZE;
 }
 
 fn update_tile_positions(
@@ -615,9 +697,15 @@ fn update_tile_positions(
     }
 }
 
-fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets) -> Color {
-    let is_wall = (map_pos.x % 5 == 0) || (map_pos.y % 5 == 0);
-    if is_wall {
+fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets, map_data: &MapData) -> Color {
+    let x = map_pos.x as u32;
+    let y = map_pos.y as u32;
+    if x >= map_data.width || y >= map_data.height {
+        return Color::NONE;
+    }
+    let flipped_y = map_data.height - 1 - y;
+    let idx = (flipped_y * map_data.width + x) as usize;
+    if map_data.is_wall.get(idx).copied().unwrap_or(false) {
         let index =
             ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
         game_assets.palette.colors[index]
@@ -629,11 +717,12 @@ fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets) -> Color {
 fn update_tile_colors(
     map_offset: Res<MapOffset>,
     game_assets: Res<GameAssets>,
+    map_data: Res<MapData>,
     mut query: Query<(&Tile, &mut Sprite)>,
 ) {
     for (tile, mut sprite) in query.iter_mut() {
         let map_pos = map_offset.0 + tile.grid_pos;
-        sprite.color = get_tile_color(map_pos, &game_assets);
+        sprite.color = get_tile_color(map_pos, &game_assets, &map_data);
     }
 }
 </tilemap.rs>

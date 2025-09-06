@@ -9,6 +9,7 @@ pub mod components;
 pub mod custom_window;
 pub mod debug;
 pub mod game;
+pub mod map;
 pub mod random;
 pub mod resolution;
 pub mod score;
