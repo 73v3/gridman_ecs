@@ -12,6 +12,7 @@ pub mod game;
 pub mod random;
 pub mod resolution;
 pub mod score;
+pub mod tilemap;
 pub mod title;
 pub mod ui_scaling;
 

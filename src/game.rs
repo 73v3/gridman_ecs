@@ -8,6 +8,7 @@ use crate::debug;
 use crate::random;
 use crate::resolution;
 use crate::score;
+use crate::tilemap;
 use crate::title;
 use crate::ui_scaling;
 pub struct GamePlugin;
@@ -25,6 +26,7 @@ impl Plugin for GamePlugin {
             audio::AudioPlugin,
             debug::DebugPlugin,
             ui_scaling::UiScalingPlugin,
+            tilemap::TilemapPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }
