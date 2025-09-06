@@ -6,8 +6,8 @@ use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
 
 const TILE_SIZE: f32 = 64.0;
-const RENDERED_WIDTH: usize = 14;
-const RENDERED_HEIGHT: usize = 11;
+const RENDERED_WIDTH: usize = 28;
+const RENDERED_HEIGHT: usize = 22;
 const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 

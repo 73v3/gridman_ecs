@@ -330,6 +330,8 @@ pub struct Resolution {
     pub pixel_ratio: f32,
     // Base resolution for scaling (e.g., the design resolution)
     pub base_resolution: Vec2,
+    // Decrease to show more onscreen 0..1
+    pub zoom: f32,
 }
 
 fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
@@ -340,7 +342,8 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
         commands.insert_resource(Resolution {
             screen_dimensions: Vec2::new(width, height),
             pixel_ratio: window.scale_factor() as f32,
-            base_resolution: Vec2::new(800.0, 600.0), // Design resolution
+            base_resolution: Vec2::new(800.0, 600.0),
+            zoom: 1.0,
         });
     } else {
         error!("No primary window found during resolution setup");
@@ -349,6 +352,7 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
             screen_dimensions: Vec2::new(800.0, 600.0),
             pixel_ratio: 1.0,
             base_resolution: Vec2::new(800.0, 600.0),
+            zoom: 1.0,
         });
     }
 }
@@ -372,6 +376,9 @@ fn handle_window_resize(
     }
 }
 
+// Increasing this value will return in the projection zooming out, showing more of the render area
+const MASTER_SCALE: f32 = 4.0;
+
 fn update_camera_projection(
     resolution: Res<Resolution>,
     mut query: Query<&mut Projection, With<Camera2d>>,
@@ -384,7 +391,7 @@ fn update_camera_projection(
                 // Use the smaller scale to maintain aspect ratio and avoid stretching
                 let scale = scale_x.min(scale_y) * resolution.pixel_ratio;
 
-                ortho.scale = 1.0 / scale;
+                ortho.scale = (MASTER_SCALE * resolution.zoom) * 1.0 / scale;
                 info!("Updated camera projection scale: {}", ortho.scale);
             }
         }
@@ -487,8 +494,8 @@ use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
 
 const TILE_SIZE: f32 = 64.0;
-const RENDERED_WIDTH: usize = 14;
-const RENDERED_HEIGHT: usize = 11;
+const RENDERED_WIDTH: usize = 28;
+const RENDERED_HEIGHT: usize = 22;
 const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 
@@ -620,7 +627,7 @@ fn update_tile_colors(
 }
 
 fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets) -> Color {
-    let is_wall = (map_pos.x % 5 == 0) || (map_pos.y % 5 == 0);
+    let is_wall = (map_pos.x % 2 == 0) || (map_pos.y % 2 == 0);
     if is_wall {
         let index =
             ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();

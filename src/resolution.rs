@@ -20,6 +20,8 @@ pub struct Resolution {
     pub pixel_ratio: f32,
     // Base resolution for scaling (e.g., the design resolution)
     pub base_resolution: Vec2,
+    // Decrease to show more onscreen 0..1
+    pub zoom: f32,
 }
 
 fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
@@ -30,7 +32,8 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
         commands.insert_resource(Resolution {
             screen_dimensions: Vec2::new(width, height),
             pixel_ratio: window.scale_factor() as f32,
-            base_resolution: Vec2::new(800.0, 600.0), // Design resolution
+            base_resolution: Vec2::new(800.0, 600.0),
+            zoom: 1.0,
         });
     } else {
         error!("No primary window found during resolution setup");
@@ -39,6 +42,7 @@ fn setup_resolution(mut commands: Commands, window_query: Query<&Window, With<Pr
             screen_dimensions: Vec2::new(800.0, 600.0),
             pixel_ratio: 1.0,
             base_resolution: Vec2::new(800.0, 600.0),
+            zoom: 1.0,
         });
     }
 }
@@ -62,6 +66,9 @@ fn handle_window_resize(
     }
 }
 
+// Increasing this value will return in the projection zooming out, showing more of the render area
+const MASTER_SCALE: f32 = 4.0;
+
 fn update_camera_projection(
     resolution: Res<Resolution>,
     mut query: Query<&mut Projection, With<Camera2d>>,
@@ -74,7 +81,7 @@ fn update_camera_projection(
                 // Use the smaller scale to maintain aspect ratio and avoid stretching
                 let scale = scale_x.min(scale_y) * resolution.pixel_ratio;
 
-                ortho.scale = 1.0 / scale;
+                ortho.scale = (MASTER_SCALE * resolution.zoom) * 1.0 / scale;
                 info!("Updated camera projection scale: {}", ortho.scale);
             }
         }
