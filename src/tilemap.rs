@@ -6,11 +6,11 @@ use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
 use crate::map::MapData;
 
-const TILE_SIZE: f32 = 64.0;
-const RENDERED_WIDTH: usize = 28;
-const RENDERED_HEIGHT: usize = 22;
-const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
-const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
+pub const TILE_SIZE: f32 = 64.0;
+pub const RENDERED_WIDTH: usize = 28;
+pub const RENDERED_HEIGHT: usize = 22;
+pub const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
+pub const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 
 #[derive(Resource)]
 pub struct MapOffset(pub IVec2);
@@ -94,6 +94,7 @@ fn spawn_tilemap(
 }
 
 // boundary-constrained scrolling via the arrow keys
+// for debugging use only, map will eventually scroll to follow player
 fn handle_scroll_input(
     mut tile_offset: ResMut<TileOffset>,
     mut map_offset: ResMut<MapOffset>,

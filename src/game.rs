@@ -6,6 +6,7 @@ use crate::collate_src;
 use crate::components;
 use crate::debug;
 use crate::map;
+use crate::player;
 use crate::random;
 use crate::resolution;
 use crate::score;
@@ -29,6 +30,7 @@ impl Plugin for GamePlugin {
             ui_scaling::UiScalingPlugin,
             tilemap::TilemapPlugin,
             map::MapPlugin,
+            player::PlayerPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }

@@ -19,6 +19,11 @@ pub struct Velocity {
     pub velocity: Vec2,
 }
 
+#[derive(Component)]
+pub struct Speed {
+    pub value: f32,
+}
+
 #[derive(Event)]
 pub struct PlayerDied;
 
@@ -40,9 +45,14 @@ impl Plugin for ComponentsPlugin {
     }
 }
 
-pub fn update_velocity(mut query: Query<(&Velocity, &mut Transform)>, time: Res<Time>) {
-    for (velocity, mut transform) in query.iter_mut() {
-        transform.translation.x += velocity.velocity.x * time.delta_secs();
-        transform.translation.y += velocity.velocity.y * time.delta_secs();
+pub fn update_velocity(
+    mut query: Query<(&Velocity, &mut Transform, Option<&Speed>)>,
+    time: Res<Time>,
+    game_speed: Res<GameSpeed>,
+) {
+    for (velocity, mut transform, speed) in query.iter_mut() {
+        let speed_modifier = speed.map_or(1.0, |s| s.value) * game_speed.value;
+        transform.translation.x += velocity.velocity.x * time.delta_secs() * speed_modifier;
+        transform.translation.y += velocity.velocity.y * time.delta_secs() * speed_modifier;
     }
 }
