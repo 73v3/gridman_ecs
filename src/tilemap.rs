@@ -36,8 +36,8 @@ impl Plugin for TilemapPlugin {
                 Update,
                 (
                     handle_scroll_input,
-                    update_tile_positions,
-                    update_tile_colors, //.run_if(resource_changed::<MapOffset>()),
+                    (update_tile_positions, update_tile_colors)
+                        .run_if(resource_changed::<MapOffset>.or(resource_changed::<TileOffset>)),
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing)),
@@ -127,17 +127,6 @@ fn update_tile_positions(
     }
 }
 
-fn update_tile_colors(
-    map_offset: Res<MapOffset>,
-    game_assets: Res<GameAssets>,
-    mut query: Query<(&Tile, &mut Sprite)>,
-) {
-    for (tile, mut sprite) in query.iter_mut() {
-        let map_pos = map_offset.0 + tile.grid_pos;
-        sprite.color = get_tile_color(map_pos, &game_assets);
-    }
-}
-
 fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets) -> Color {
     let is_wall = (map_pos.x % 5 == 0) || (map_pos.y % 5 == 0);
     if is_wall {
@@ -146,5 +135,16 @@ fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets) -> Color {
         game_assets.palette.colors[index]
     } else {
         Color::NONE
+    }
+}
+
+fn update_tile_colors(
+    map_offset: Res<MapOffset>,
+    game_assets: Res<GameAssets>,
+    mut query: Query<(&Tile, &mut Sprite)>,
+) {
+    for (tile, mut sprite) in query.iter_mut() {
+        let map_pos = map_offset.0 + tile.grid_pos;
+        sprite.color = get_tile_color(map_pos, &game_assets);
     }
 }

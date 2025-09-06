@@ -12,6 +12,9 @@ impl Plugin for ResolutionPlugin {
     }
 }
 
+// Increasing this value will result in the projection zooming out, showing more of the render area
+const MASTER_SCALE: f32 = 4.0;
+
 #[derive(Resource)]
 pub struct Resolution {
     // Pixel dimensions of the screen (width, height)
@@ -65,9 +68,6 @@ fn handle_window_resize(
         }
     }
 }
-
-// Increasing this value will return in the projection zooming out, showing more of the render area
-const MASTER_SCALE: f32 = 4.0;
 
 fn update_camera_projection(
     resolution: Res<Resolution>,
