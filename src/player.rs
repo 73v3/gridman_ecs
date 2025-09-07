@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState, Speed, Velocity};
+use crate::components::{GameEntity, GameState};
+use crate::grid_movement::{GridMover, IntendedDirection, MovementSystems};
 use crate::map::MapData;
 use crate::random::random_float;
 use crate::tilemap::{
@@ -16,8 +17,10 @@ impl Plugin for PlayerPlugin {
         app.add_systems(OnEnter(GameState::Playing), spawn_player)
             .add_systems(
                 Update,
-                (handle_player_input, adjust_scroll_for_buffer)
-                    .chain()
+                (
+                    handle_player_input.in_set(MovementSystems::Input),
+                    adjust_scroll_for_buffer.in_set(MovementSystems::AdjustScroll),
+                )
                     .run_if(in_state(GameState::Playing)),
             );
     }
@@ -71,39 +74,37 @@ fn spawn_player(
         },
         Transform::from_xyz(0.0, 0.0, 1.0),
         Player,
-        Velocity {
-            velocity: Vec2::ZERO,
+        GridMover {
+            grid_pos: IVec2::new(mx, my),
+            direction: IVec2::ZERO,
+            progress: 0.0,
+            speed: 20.0 * DEFAULT_PLAYER_SPEED,
         },
-        Speed {
-            value: DEFAULT_PLAYER_SPEED,
-        },
+        IntendedDirection(IVec2::ZERO),
         GameEntity,
     ));
 }
 
 fn handle_player_input(
     keys: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Velocity, &Speed), With<Player>>,
+    mut query: Query<&mut IntendedDirection, With<Player>>,
 ) {
-    for (mut vel, speed) in &mut query {
-        let mut dir = Vec2::ZERO;
-        if keys.pressed(KeyCode::KeyW) {
-            dir.y += 1.0;
-        }
-        if keys.pressed(KeyCode::KeyS) {
-            dir.y -= 1.0;
-        }
+    if let Ok(mut intended) = query.single_mut() {
+        let mut dx = 0i32;
         if keys.pressed(KeyCode::KeyA) {
-            dir.x -= 1.0;
+            dx -= 1;
         }
         if keys.pressed(KeyCode::KeyD) {
-            dir.x += 1.0;
+            dx += 1;
         }
-        vel.velocity = if dir != Vec2::ZERO {
-            dir.normalize() * speed.value
-        } else {
-            Vec2::ZERO
-        };
+        let mut dy = 0i32;
+        if keys.pressed(KeyCode::KeyS) {
+            dy -= 1;
+        }
+        if keys.pressed(KeyCode::KeyW) {
+            dy += 1;
+        }
+        intended.0 = IVec2::new(dx, dy);
     }
 }
 
