@@ -767,13 +767,14 @@ fn handle_shoot(
 }
 
 fn adjust_scroll_for_buffer(
-    mut query_player: Query<&mut Transform, With<Player>>,
+    query_player: Query<&Transform, With<Player>>,
     mut map_offset: ResMut<MapOffset>,
     mut tile_offset: ResMut<TileOffset>,
     map_data: Res<MapData>,
 ) {
     let half_buffer = BUFFER_TILES * TILE_SIZE / 2.0;
-    if let Ok(mut player_tr) = query_player.single_mut() {
+
+    if let Ok(player_tr) = query_player.single() {
         let p = player_tr.translation.xy();
         let mut delta = Vec2::ZERO;
         if p.x > half_buffer.x {
@@ -788,8 +789,6 @@ fn adjust_scroll_for_buffer(
         }
         if delta != Vec2::ZERO {
             tile_offset.0 -= delta;
-            player_tr.translation.x -= delta.x;
-            player_tr.translation.y -= delta.y;
         }
     }
 
