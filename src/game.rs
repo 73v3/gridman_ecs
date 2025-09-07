@@ -5,6 +5,7 @@ use crate::audio;
 use crate::collate_src;
 use crate::components;
 use crate::debug;
+use crate::grid_movement;
 use crate::map;
 use crate::player;
 use crate::random;
@@ -31,6 +32,7 @@ impl Plugin for GamePlugin {
             tilemap::TilemapPlugin,
             map::MapPlugin,
             player::PlayerPlugin,
+            grid_movement::GridMovementPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }
