@@ -1,4 +1,3 @@
-// player.rs
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;
@@ -127,10 +126,10 @@ fn handle_shoot(
     if keys.just_pressed(KeyCode::Space) {
         if let Ok((mover, intended)) = query.single() {
             info!("space pressed");
-            if mover.progress == 0.0 && intended.0 != IVec2::ZERO {
+            if intended.0 != IVec2::ZERO {
                 let dir = intended.0;
-                let next_tile = mover.grid_pos + dir;
-                if is_wall(next_tile, &map_data) {
+                let spawn_pos = mover.grid_pos + dir; // Spawn in the next tile in the direction
+                if is_wall(spawn_pos, &map_data) {
                     return;
                 }
                 let color = random_colour(&mut rng, &game_assets);
@@ -143,7 +142,7 @@ fn handle_shoot(
                     Transform::from_xyz(0.0, 0.0, 1.0),
                     Projectile,
                     GridMover {
-                        grid_pos: mover.grid_pos,
+                        grid_pos: spawn_pos, // Start at the center of the target tile
                         direction: IVec2::ZERO,
                         progress: 0.0,
                         speed: 30.0 * DEFAULT_PLAYER_SPEED,
