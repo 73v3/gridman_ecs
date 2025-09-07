@@ -36,7 +36,10 @@ impl Plugin for GamePlugin {
             player::PlayerPlugin,
             grid_movement::GridMovementPlugin,
             collider::ColliderPlugin,
-            //projectile::ProjectilePlugin,
+        ))
+        .add_plugins((
+            projectile::ProjectilePlugin,
+            // ... additional plugins
         ))
         .add_systems(Startup, setup_scene);
     }

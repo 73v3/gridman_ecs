@@ -1,10 +1,14 @@
+// player.rs
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;
+use crate::audio;
+use crate::collider::Collider;
 use crate::components::{GameEntity, GameState};
-use crate::grid_movement::{GridMover, IntendedDirection, MovementSystems};
+use crate::grid_movement::{is_wall, GridMover, IntendedDirection, MovementSystems};
 use crate::map::MapData;
-use crate::random::random_float;
+use crate::projectile::{Bouncable, Projectile};
+use crate::random::{random_colour, random_float};
 use crate::tilemap::{
     MapOffset, TileOffset, HALF_HEIGHT, HALF_WIDTH, RENDERED_HEIGHT, RENDERED_WIDTH, TILE_SIZE,
 };
@@ -19,6 +23,7 @@ impl Plugin for PlayerPlugin {
                 Update,
                 (
                     handle_player_input.in_set(MovementSystems::Input),
+                    handle_shoot.in_set(MovementSystems::Input),
                     adjust_scroll_for_buffer.in_set(MovementSystems::AdjustScroll),
                 )
                     .run_if(in_state(GameState::Playing)),
@@ -82,6 +87,9 @@ fn spawn_player(
         },
         IntendedDirection(IVec2::ZERO),
         GameEntity,
+        Collider {
+            size: Vec2::splat(TILE_SIZE * 0.5),
+        },
     ));
 }
 
@@ -108,6 +116,51 @@ fn handle_player_input(
     }
 }
 
+fn handle_shoot(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    mut rng: GlobalEntropy<WyRand>,
+    game_assets: Res<GameAssets>,
+    query: Query<(&GridMover, &IntendedDirection), With<Player>>,
+    map_data: Res<MapData>,
+) {
+    if keys.just_pressed(KeyCode::Space) {
+        if let Ok((mover, intended)) = query.single() {
+            info!("space pressed");
+            if mover.progress == 0.0 && intended.0 != IVec2::ZERO {
+                let dir = intended.0;
+                let next_tile = mover.grid_pos + dir;
+                if is_wall(next_tile, &map_data) {
+                    return;
+                }
+                let color = random_colour(&mut rng, &game_assets);
+                commands.spawn((
+                    Sprite {
+                        color,
+                        image: game_assets.player_texture.clone(),
+                        ..default()
+                    },
+                    Transform::from_xyz(0.0, 0.0, 1.0),
+                    Projectile,
+                    GridMover {
+                        grid_pos: mover.grid_pos,
+                        direction: IVec2::ZERO,
+                        progress: 0.0,
+                        speed: 30.0 * DEFAULT_PLAYER_SPEED,
+                    },
+                    IntendedDirection(dir),
+                    Bouncable { remaining: 3 },
+                    Collider {
+                        size: Vec2::splat(TILE_SIZE * 0.5),
+                    },
+                    GameEntity,
+                ));
+                audio::play(&mut commands, game_assets.shoot_sfx.clone());
+            }
+        }
+    }
+}
+
 fn adjust_scroll_for_buffer(
     mut query_player: Query<&mut Transform, With<Player>>,
     mut map_offset: ResMut<MapOffset>,
@@ -129,8 +182,7 @@ fn adjust_scroll_for_buffer(
             delta.y = p.y + half_buffer.y;
         }
         if delta != Vec2::ZERO {
-            tile_offset.0.x -= delta.x;
-            tile_offset.0.y -= delta.y;
+            tile_offset.0 -= delta;
             player_tr.translation.x -= delta.x;
             player_tr.translation.y -= delta.y;
         }
