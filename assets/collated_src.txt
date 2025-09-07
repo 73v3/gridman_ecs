@@ -86,6 +86,65 @@ pub fn play_with_volume(commands: &mut Commands, audio: Handle<AudioSource>, vol
 }
 </audio.rs>
 
+<collider.rs>
+// collider.rs
+use bevy::prelude::*;
+
+#[derive(Component)]
+pub struct Collider {
+    pub size: Vec2,
+}
+
+#[derive(Event)]
+pub struct Collision {
+    pub a: Entity,
+    pub b: Entity,
+}
+
+pub struct ColliderPlugin;
+
+impl Plugin for ColliderPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_event::<Collision>().add_systems(
+            Update,
+            detect_collisions.run_if(in_state(crate::components::GameState::Playing)),
+        );
+    }
+}
+
+fn detect_collisions(
+    mut events: EventWriter<Collision>,
+    query: Query<(Entity, &Transform, &Collider)>,
+) {
+    let entities: Vec<(Entity, Vec2, Vec2)> = query
+        .iter()
+        .map(|(e, t, c)| (e, t.translation.xy(), c.size))
+        .collect();
+
+    for i in 0..entities.len() {
+        for j in (i + 1)..entities.len() {
+            let (a, pos_a, size_a) = entities[i];
+            let (b, pos_b, size_b) = entities[j];
+
+            if aabb_overlap(pos_a, size_a, pos_b, size_b) {
+                events.write(Collision { a, b });
+            }
+        }
+    }
+}
+
+fn aabb_overlap(pos1: Vec2, size1: Vec2, pos2: Vec2, size2: Vec2) -> bool {
+    let half1 = size1 / 2.0;
+    let half2 = size2 / 2.0;
+    let min1 = pos1 - half1;
+    let max1 = pos1 + half1;
+    let min2 = pos2 - half2;
+    let max2 = pos2 + half2;
+
+    min1.x < max2.x && max1.x > min2.x && min1.y < max2.y && max1.y > min2.y
+}
+</collider.rs>
+
 <components.rs>
 use bevy::prelude::*;
 
@@ -220,11 +279,13 @@ use bevy::prelude::*;
 use crate::assets;
 use crate::audio;
 use crate::collate_src;
+use crate::collider;
 use crate::components;
 use crate::debug;
 use crate::grid_movement;
 use crate::map;
 use crate::player;
+use crate::projectile;
 use crate::random;
 use crate::resolution;
 use crate::score;
@@ -250,10 +311,13 @@ impl Plugin for GamePlugin {
             map::MapPlugin,
             player::PlayerPlugin,
             grid_movement::GridMovementPlugin,
+            collider::ColliderPlugin,
+            //projectile::ProjectilePlugin,
         ))
         .add_systems(Startup, setup_scene);
     }
 }
+
 fn setup_scene(mut commands: Commands) {
     commands.spawn(Camera2d::default());
 }
@@ -407,6 +471,7 @@ use bevy::prelude::*;
 pub mod assets;
 pub mod audio;
 pub mod collate_src;
+pub mod collider;
 pub mod components;
 pub mod custom_window;
 pub mod debug;
@@ -414,6 +479,8 @@ pub mod game;
 pub mod grid_movement;
 pub mod map;
 pub mod player;
+pub mod projectile;
+
 pub mod random;
 pub mod resolution;
 pub mod score;
@@ -644,6 +711,30 @@ fn adjust_scroll_for_buffer(
     tile_offset.0.y = -(view_top - map_offset.0.y as f32) * TILE_SIZE;
 }
 </player.rs>
+
+<projectile.rs>
+// projectile.rs
+use bevy::prelude::*;
+
+//use crate::components::GameState;
+//use crate::grid_movement::MovementSystems;
+
+#[derive(Component)]
+pub struct Projectile;
+
+#[derive(Component)]
+pub struct Bouncable {
+    pub remaining: u32,
+}
+
+pub struct ProjectilePlugin;
+
+impl Plugin for ProjectilePlugin {
+    fn build(&self, _app: &mut App) {
+        // No additional setup needed, as AudioPlugin is included in DefaultPlugins
+    }
+}
+</projectile.rs>
 
 <random.rs>
 // src/random.rs
