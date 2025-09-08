@@ -8,6 +8,7 @@ use crate::components;
 use crate::debug;
 use crate::grid_movement;
 use crate::map;
+use crate::overlay;
 use crate::player;
 use crate::projectile;
 use crate::random;
@@ -21,6 +22,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            // max of 15 plugins in a tuple
             collate_src::CollateSrcPlugin,
             components::ComponentsPlugin,
             resolution::ResolutionPlugin,
@@ -37,10 +39,7 @@ impl Plugin for GamePlugin {
             grid_movement::GridMovementPlugin,
             collider::ColliderPlugin,
         ))
-        .add_plugins((
-            projectile::ProjectilePlugin,
-            // ... additional plugins
-        ))
+        .add_plugins((projectile::ProjectilePlugin, overlay::OverlayPlugin))
         .add_systems(Startup, setup_scene);
     }
 }

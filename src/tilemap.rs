@@ -1,22 +1,33 @@
 // tilemap.rs
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
+use bevy_rand::prelude::{GlobalEntropy, WyRand};
 
 use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
 use crate::map::MapData;
+use crate::random::random_colour;
 
 pub const TILE_SIZE: f32 = 64.0;
 pub const RENDERED_WIDTH: usize = 28;
 pub const RENDERED_HEIGHT: usize = 22;
 pub const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 pub const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
+/// Defines the size of one side of a checkerboard square, in tiles.
+pub const CHECKER_SIZE: u32 = 4;
 
 #[derive(Resource)]
 pub struct MapOffset(pub IVec2);
 
 #[derive(Resource)]
 pub struct TileOffset(pub Vec2);
+
+/// A resource to hold the two darkened, randomized colors for the floor pattern.
+#[derive(Resource)]
+pub struct FloorPalette {
+    pub color_a: Color,
+    pub color_b: Color,
+}
 
 #[derive(Component)]
 pub struct Tile {
@@ -34,7 +45,12 @@ impl Plugin for TilemapPlugin {
             .insert_resource(TileOffset(Vec2::ZERO))
             .add_systems(
                 OnEnter(GameState::Playing),
-                (setup_initial_offset, spawn_tilemap).chain(),
+                (
+                    setup_initial_offset,
+                    setup_floor_palette, // Create the random palette
+                    spawn_tilemap,
+                )
+                    .chain(),
             )
             .add_systems(
                 Update,
@@ -46,6 +62,41 @@ impl Plugin for TilemapPlugin {
                     .chain()
                     .run_if(in_state(GameState::Playing)),
             );
+    }
+}
+
+/// A new system that runs once to create and store the floor palette.
+/// It picks two random colors, darkens them, and inserts them as a resource.
+fn setup_floor_palette(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    mut rng: GlobalEntropy<WyRand>,
+) {
+    let mut color_a = random_colour(&mut rng, &game_assets);
+    let mut color_b = random_colour(&mut rng, &game_assets);
+    while color_a == color_b {
+        color_b = random_colour(&mut rng, &game_assets);
+    }
+
+    let darken_factor = 0.25;
+    color_a = darken(color_a, darken_factor);
+    color_b = darken(color_b, darken_factor);
+
+    commands.insert_resource(FloorPalette {
+        color_a: color_a,
+        color_b: color_b,
+    });
+}
+
+fn darken(c: Color, darken_factor: f32) -> Color {
+    match c {
+        Color::Srgba(mut srgba) => {
+            srgba.red *= darken_factor;
+            srgba.green *= darken_factor;
+            srgba.blue *= darken_factor;
+            Color::Srgba(srgba)
+        }
+        _ => c,
     }
 }
 
@@ -65,6 +116,7 @@ fn spawn_tilemap(
     game_assets: Res<GameAssets>,
     map_data: Res<MapData>,
     map_offset: Res<MapOffset>,
+    floor_palette: Res<FloorPalette>, // Get the newly created floor palette
 ) {
     let wall_texture = game_assets.wall_texture.clone();
 
@@ -76,7 +128,8 @@ fn spawn_tilemap(
 
             let grid_pos = IVec2::new(gx as i32, gy as i32);
             let map_pos = grid_pos + map_offset.0;
-            let color = get_tile_color(map_pos, &game_assets, &map_data);
+            // Pass the palette to the color logic function
+            let color = get_tile_color(map_pos, &game_assets, &map_data, &floor_palette);
 
             commands.spawn((
                 Sprite {
@@ -151,31 +204,59 @@ fn update_tile_positions(
     }
 }
 
-fn get_tile_color(map_pos: IVec2, game_assets: &GameAssets, map_data: &MapData) -> Color {
-    let x = map_pos.x as u32;
-    let y = map_pos.y as u32;
-    if x >= map_data.width || y >= map_data.height {
+/// Updated to determine tile color based on walls and the new checkerboard floor.
+fn get_tile_color(
+    map_pos: IVec2,
+    game_assets: &GameAssets,
+    map_data: &MapData,
+    floor_palette: &FloorPalette,
+) -> Color {
+    // First, check if the position is within the map's boundaries.
+    // If not, return a transparent color to avoid drawing outside the map area.
+    if map_pos.x < 0
+        || map_pos.y < 0
+        || map_pos.x >= map_data.width as i32
+        || map_pos.y >= map_data.height as i32
+    {
         return Color::NONE;
     }
+
+    // Determine if the current tile is a wall.
+    let x = map_pos.x as u32;
+    let y = map_pos.y as u32;
     let flipped_y = map_data.height - 1 - y;
     let idx = (flipped_y * map_data.width + x) as usize;
-    if map_data.is_wall.get(idx).copied().unwrap_or(false) {
+    let is_wall = map_data.is_wall.get(idx).copied().unwrap_or(false);
+
+    if is_wall {
+        // It's a wall, so calculate its color based on its position.
         let index =
             ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
         game_assets.palette.colors[index]
     } else {
-        Color::NONE
+        // It's a floor tile, so apply the checkerboard pattern.
+        // Use Euclidean division to handle potential negative coordinates gracefully.
+        let checker_x = map_pos.x.div_euclid(CHECKER_SIZE as i32);
+        let checker_y = map_pos.y.div_euclid(CHECKER_SIZE as i32);
+        if (checker_x + checker_y) % 2 == 0 {
+            floor_palette.color_a
+        } else {
+            floor_palette.color_b
+        }
     }
 }
 
+/// Updated to pass the FloorPalette resource to the color logic.
 fn update_tile_colors(
     map_offset: Res<MapOffset>,
     game_assets: Res<GameAssets>,
     map_data: Res<MapData>,
+    floor_palette: Res<FloorPalette>, // Get the floor palette
     mut query: Query<(&Tile, &mut Sprite)>,
 ) {
     for (tile, mut sprite) in query.iter_mut() {
         let map_pos = map_offset.0 + tile.grid_pos;
-        sprite.color = get_tile_color(map_pos, &game_assets, &map_data);
+        // Pass the palette to the color logic function
+        sprite.color = get_tile_color(map_pos, &game_assets, &map_data, &floor_palette);
     }
 }
