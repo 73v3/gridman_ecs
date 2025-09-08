@@ -55,6 +55,8 @@ pub enum MovementSystems {
     UpdatePosition,
     /// Adjusts camera/viewport scrolling based on the final entity position.
     AdjustScroll,
+    /// Applies any changes to offsets to entity positions.
+    ApplyOffsetChanges,
 }
 
 /// The plugin that adds all grid movement logic to the application.
@@ -71,6 +73,7 @@ impl Plugin for GridMovementPlugin {
                     MovementSystems::UpdateMover.after(MovementSystems::Input),
                     MovementSystems::UpdatePosition.after(MovementSystems::UpdateMover),
                     MovementSystems::AdjustScroll.after(MovementSystems::UpdatePosition),
+                    MovementSystems::ApplyOffsetChanges.after(MovementSystems::AdjustScroll),
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing)),
@@ -83,6 +86,12 @@ impl Plugin for GridMovementPlugin {
             .add_systems(
                 Update,
                 update_grid_positions.in_set(MovementSystems::UpdatePosition),
+            )
+            .add_systems(
+                Update,
+                update_grid_positions
+                    .run_if(resource_changed::<MapOffset>.or(resource_changed::<TileOffset>))
+                    .in_set(MovementSystems::ApplyOffsetChanges),
             );
     }
 }
