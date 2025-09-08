@@ -21,7 +21,6 @@ pub struct Palette {
 pub struct GameAssets {
     pub wall_texture: Handle<Image>,
     pub player_texture: Handle<Image>,
-    pub overlay_texture: Handle<Image>,
     pub font: Handle<Font>,
     pub shoot_sfx: Handle<AudioSource>,
     pub palette: Palette,
@@ -49,7 +48,6 @@ fn load_assets(
     commands.insert_resource(GameAssets {
         wall_texture: asset_server.load("textures/wall.png"),
         player_texture: asset_server.load("textures/player.png"),
-        overlay_texture: asset_server.load("textures/overlay.png"),
         font: asset_server.load("fonts/press_start_2p/PressStart2P-Regular.ttf"),
         shoot_sfx: asset_server.load("sfx/shoot.wav"),
         palette,
@@ -286,7 +284,6 @@ use crate::components;
 use crate::debug;
 use crate::grid_movement;
 use crate::map;
-use crate::overlay;
 use crate::player;
 use crate::projectile;
 use crate::random;
@@ -317,7 +314,7 @@ impl Plugin for GamePlugin {
             grid_movement::GridMovementPlugin,
             collider::ColliderPlugin,
         ))
-        .add_plugins((projectile::ProjectilePlugin, overlay::OverlayPlugin))
+        .add_plugins(projectile::ProjectilePlugin)
         .add_systems(Startup, setup_scene);
     }
 }
@@ -612,7 +609,6 @@ pub mod debug;
 pub mod game;
 pub mod grid_movement;
 pub mod map;
-pub mod overlay;
 pub mod player;
 pub mod projectile;
 pub mod random;
@@ -687,71 +683,6 @@ fn process_map(mut commands: Commands, map_handle: Res<MapHandle>, images: Res<A
     }
 }
 </map.rs>
-
-<overlay.rs>
-// overlay.rs
-use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
-
-use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState};
-use crate::resolution::Resolution;
-
-pub struct OverlayPlugin;
-
-impl Plugin for OverlayPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), spawn_overlay)
-            .add_systems(OnExit(GameState::Playing), despawn_overlay)
-            .add_systems(
-                Update,
-                update_overlay_size.run_if(in_state(GameState::Playing)),
-            );
-    }
-}
-
-#[derive(Component)]
-struct Overlay;
-
-fn spawn_overlay(
-    mut commands: Commands,
-    game_assets: Res<GameAssets>,
-    resolution: Res<Resolution>,
-) {
-    commands.spawn((
-        Sprite {
-            color: Color::WHITE,
-            image: game_assets.overlay_texture.clone(),
-            custom_size: Some(resolution.screen_dimensions), // Set initial size to window dimensions
-            ..default()
-        },
-        Transform::from_xyz(0.0, 0.0, 999.0), // High z-index to render over tilemap but under UI
-        Overlay,
-        GameEntity,
-    ));
-}
-
-fn despawn_overlay(mut commands: Commands, query: Query<Entity, With<Overlay>>) {
-    for entity in query.iter() {
-        commands.entity(entity).despawn();
-    }
-}
-
-fn update_overlay_size(
-    mut query: Query<&mut Sprite, With<Overlay>>,
-    resolution: Res<Resolution>,
-    window_query: Query<&Window, With<PrimaryWindow>>,
-) {
-    if resolution.is_changed() {
-        if let Ok(window) = window_query.single() {
-            let window_size = Vec2::new(window.resolution.width(), window.resolution.height());
-            for mut sprite in query.iter_mut() {
-                sprite.custom_size = Some(3. * window_size);
-            }
-        }
-    }
-}
-</overlay.rs>
 
 <player.rs>
 // player.rs
@@ -1340,16 +1271,19 @@ fn setup_floor_palette(
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,
 ) {
+    // pick 2 random different colours from our palette
     let mut color_a = random_colour(&mut rng, &game_assets);
     let mut color_b = random_colour(&mut rng, &game_assets);
     while color_a == color_b {
         color_b = random_colour(&mut rng, &game_assets);
     }
 
+    // darken them
     let darken_factor = 0.25;
     color_a = darken(color_a, darken_factor);
     color_b = darken(color_b, darken_factor);
 
+    // and insert them into a resource
     commands.insert_resource(FloorPalette {
         color_a: color_a,
         color_b: color_b,
@@ -1410,6 +1344,18 @@ fn spawn_tilemap(
                 BasePosition(base_pos),
                 GameEntity,
             ));
+
+            if gx < 1 || gy < 1 || gx >= RENDERED_WIDTH - 1 || gy >= RENDERED_HEIGHT - 1 {
+                commands.spawn((
+                    Sprite {
+                        image: wall_texture.clone(),
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                    Transform::from_xyz(base_x - TILE_SIZE / 2., base_y - TILE_SIZE / 2., 0.0001),
+                    GameEntity,
+                ));
+            }
         }
     }
 }

@@ -72,16 +72,19 @@ fn setup_floor_palette(
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,
 ) {
+    // pick 2 random different colours from our palette
     let mut color_a = random_colour(&mut rng, &game_assets);
     let mut color_b = random_colour(&mut rng, &game_assets);
     while color_a == color_b {
         color_b = random_colour(&mut rng, &game_assets);
     }
 
+    // darken them
     let darken_factor = 0.25;
     color_a = darken(color_a, darken_factor);
     color_b = darken(color_b, darken_factor);
 
+    // and insert them into a resource
     commands.insert_resource(FloorPalette {
         color_a: color_a,
         color_b: color_b,
@@ -142,6 +145,18 @@ fn spawn_tilemap(
                 BasePosition(base_pos),
                 GameEntity,
             ));
+
+            if gx < 1 || gy < 1 || gx >= RENDERED_WIDTH - 1 || gy >= RENDERED_HEIGHT - 1 {
+                commands.spawn((
+                    Sprite {
+                        image: wall_texture.clone(),
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                    Transform::from_xyz(base_x - TILE_SIZE / 2., base_y - TILE_SIZE / 2., 0.0001),
+                    GameEntity,
+                ));
+            }
         }
     }
 }

@@ -12,7 +12,6 @@ pub mod debug;
 pub mod game;
 pub mod grid_movement;
 pub mod map;
-pub mod overlay;
 pub mod player;
 pub mod projectile;
 pub mod random;

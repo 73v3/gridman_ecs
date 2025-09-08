@@ -8,7 +8,6 @@ use crate::components;
 use crate::debug;
 use crate::grid_movement;
 use crate::map;
-use crate::overlay;
 use crate::player;
 use crate::projectile;
 use crate::random;
@@ -39,7 +38,7 @@ impl Plugin for GamePlugin {
             grid_movement::GridMovementPlugin,
             collider::ColliderPlugin,
         ))
-        .add_plugins((projectile::ProjectilePlugin, overlay::OverlayPlugin))
+        .add_plugins(projectile::ProjectilePlugin)
         .add_systems(Startup, setup_scene);
     }
 }
