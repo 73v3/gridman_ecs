@@ -12,6 +12,7 @@ use bevy::ecs::schedule::SystemSet;
 use bevy::prelude::*;
 
 use crate::components::GameState;
+use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::MapData;
 use crate::projectile::{Bouncable, Projectile};
 use crate::tilemap::{MapOffset, TileOffset, HALF_HEIGHT, HALF_WIDTH, TILE_SIZE};
@@ -57,16 +58,6 @@ pub enum MovementSystems {
     AdjustScroll,
     /// Applies any changes to offsets to entity positions.
     ApplyOffsetChanges,
-    // Fix for player sprite ghosting and choppy scrolling:
-    // Player sprite ghosting occurred due to a one-frame delay between updating entity Transforms
-    // (via update_grid_positions) and applying changes to MapOffset/TileOffset during scrolling,
-    // triggered by adjust_scroll_for_buffer in player.rs. This caused misalignment with tilemap updates.
-    //
-    // The MovementSystems::ApplyOffsetChanges set was added to run after MovementSystems::AdjustScroll,
-    // scheduling update_grid_positions when MapOffset or TileOffset changes. This ensures entity positions
-    // (e.g., player, projectiles) are recalculated in the same frame as offset changes, synchronizing
-    // them with tilemap updates for smooth rendering and eliminating lag. The fix is lightweight,
-    // as it affects only a small number of GridMover entities.
 }
 
 /// The plugin that adds all grid movement logic to the application.
@@ -120,22 +111,41 @@ fn update_grid_movement(
         Entity,
         &mut GridMover,
         &mut IntendedDirection,
+        Option<&GridReserver>,
         Option<&mut Bouncable>,
         Option<&Projectile>,
     )>,
     time: Res<Time>,
     map_data: Res<MapData>,
+    mut reservations: ResMut<GridReservations>,
 ) {
-    for (entity, mut mover, mut intended, bouncable, projectile) in &mut query {
+    for (entity, mut mover, mut intended, reserver, bouncable, projectile) in &mut query {
         // --- State 1: Entity is stationary ---
         if mover.direction == IVec2::ZERO {
             let new_dir = intended.0;
             if new_dir != IVec2::ZERO {
                 let next_tile = mover.grid_pos + new_dir;
-                // Only start moving if the target tile is not a wall.
-                if !is_wall(next_tile, &map_data) {
+
+                // Check if the target tile is valid for movement.
+                let is_tile_wall = is_wall(next_tile, &map_data);
+                let mut is_tile_reserved = false;
+
+                // Only check for reservations if the entity is a GridReserver.
+                if reserver.is_some() {
+                    if let Some(&occupant) = reservations.0.get(&next_tile) {
+                        // A tile is only considered reserved if it's occupied by another entity.
+                        is_tile_reserved = occupant != entity;
+                    }
+                }
+
+                // Only start moving if the target tile is not a wall and not reserved.
+                if !is_tile_wall && !is_tile_reserved {
                     mover.direction = new_dir;
                     mover.progress = 0.0;
+                    // If this is a reserver, claim the destination tile.
+                    if reserver.is_some() {
+                        reservations.0.insert(next_tile, entity);
+                    }
                 }
             }
         // --- State 2: Entity is currently moving between tiles ---
@@ -152,8 +162,19 @@ fn update_grid_movement(
 
             // --- State 3: Entity has arrived at or passed the destination tile ---
             if mover.progress >= 1.0 {
+                let old_pos = mover.grid_pos;
                 let current_direction = mover.direction;
                 mover.grid_pos += current_direction; // Lock position to the new grid tile.
+
+                // If this entity reserves tiles, free the one it just left.
+                if reserver.is_some() {
+                    // Only remove the reservation if this entity was the one holding it.
+                    if let Some(&occupant) = reservations.0.get(&old_pos) {
+                        if occupant == entity {
+                            reservations.0.remove(&old_pos);
+                        }
+                    }
+                }
 
                 // Check if the entity wants to continue in the same direction.
                 let is_continuing =

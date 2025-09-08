@@ -20,6 +20,7 @@ pub struct Palette {
 pub struct GameAssets {
     pub wall_texture: Handle<Image>,
     pub player_texture: Handle<Image>,
+    pub reservation_texture: Handle<Image>,
     pub font: Handle<Font>,
     pub shoot_sfx: Handle<AudioSource>,
     pub palette: Palette,
@@ -47,6 +48,7 @@ fn load_assets(
     commands.insert_resource(GameAssets {
         wall_texture: asset_server.load("textures/wall.png"),
         player_texture: asset_server.load("textures/player.png"),
+        reservation_texture: asset_server.load("textures/reservation.png"),
         font: asset_server.load("fonts/press_start_2p/PressStart2P-Regular.ttf"),
         shoot_sfx: asset_server.load("sfx/shoot.wav"),
         palette,

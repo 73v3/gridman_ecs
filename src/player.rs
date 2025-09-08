@@ -10,6 +10,7 @@ use crate::audio;
 use crate::collider::Collider;
 use crate::components::{GameEntity, GameState};
 use crate::grid_movement::{is_wall, GridMover, IntendedDirection, MovementSystems};
+use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::MapData;
 use crate::projectile::{Bouncable, Projectile};
 use crate::random::{random_colour, random_float};
@@ -63,6 +64,7 @@ fn spawn_player(
     map_data: Res<MapData>,
     mut map_offset: ResMut<MapOffset>,
     mut tile_offset: ResMut<TileOffset>,
+    mut reservations: ResMut<GridReservations>,
 ) {
     let width = map_data.width as i32;
     let height = map_data.height as i32;
@@ -96,26 +98,32 @@ fn spawn_player(
     tile_offset.0 = Vec2::new(-frac_x * TILE_SIZE, -frac_y * TILE_SIZE);
 
     // Spawn the player entity with all its necessary components.
-    commands.spawn((
-        Sprite {
-            color: Color::WHITE,
-            image: game_assets.player_texture.clone(),
-            ..default()
-        },
-        Transform::from_xyz(0.0, 0.0, 1.0), // Initial position is centered, adjusted by GridMover.
-        Player,
-        GridMover {
-            grid_pos: IVec2::new(mx, my),
-            direction: IVec2::ZERO,
-            progress: 0.0,
-            speed: 20.0 * DEFAULT_PLAYER_SPEED,
-        },
-        IntendedDirection(IVec2::ZERO),
-        GameEntity, // Marker for cleanup when returning to the title screen.
-        Collider {
-            size: Vec2::splat(TILE_SIZE * 0.5), // A smaller collider than the tile size.
-        },
-    ));
+    let player_entity = commands
+        .spawn((
+            Sprite {
+                color: Color::WHITE,
+                image: game_assets.player_texture.clone(),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 1.0), // Initial position is centered, adjusted by GridMover.
+            Player,
+            GridMover {
+                grid_pos: IVec2::new(mx, my),
+                direction: IVec2::ZERO,
+                progress: 0.0,
+                speed: 20.0 * DEFAULT_PLAYER_SPEED,
+            },
+            IntendedDirection(IVec2::ZERO),
+            GameEntity, // Marker for cleanup when returning to the title screen.
+            Collider {
+                size: Vec2::splat(TILE_SIZE * 0.5), // A smaller collider than the tile size.
+            },
+            GridReserver, // Add the reserver component
+        ))
+        .id();
+
+    // Make the initial reservation for the player's starting cell.
+    reservations.0.insert(IVec2::new(mx, my), player_entity);
 }
 
 /// Reads keyboard input (W, A, S, D) to set the player's intended direction of movement.
