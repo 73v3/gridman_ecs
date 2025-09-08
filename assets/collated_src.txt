@@ -812,7 +812,15 @@ fn process_map(mut commands: Commands, map_handle: Res<MapHandle>, images: Res<A
                         let r = data[idx] as f32 / 255.0;
                         let g = data[idx + 1] as f32 / 255.0;
                         let b = data[idx + 2] as f32 / 255.0;
-                        is_wall[(y * width + x) as usize] = r > 0.0 || g > 0.0 || b > 0.0;
+                        // extend the wall on top and right edges to allow for scrolling clamp issue
+                        is_wall[(y * width + x) as usize] = r > 0.0
+                            || g > 0.0
+                            || b > 0.0
+                            || y < 2
+                            || x >= width - 2
+                            || x == 0
+                            || y == 0
+                            || y == height - 1;
                     }
                 }
             }
