@@ -9,8 +9,8 @@ use crate::map::MapData;
 use crate::random::random_colour;
 
 pub const TILE_SIZE: f32 = 64.0;
-pub const RENDERED_WIDTH: usize = 28;
-pub const RENDERED_HEIGHT: usize = 22;
+pub const RENDERED_WIDTH: usize = 32;
+pub const RENDERED_HEIGHT: usize = 26;
 pub const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 pub const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 /// Defines the size of one side of a checkerboard square, in tiles.
@@ -145,18 +145,21 @@ fn spawn_tilemap(
                 BasePosition(base_pos),
                 GameEntity,
             ));
-
-            if gx < 1 || gy < 1 || gx >= RENDERED_WIDTH - 1 || gy >= RENDERED_HEIGHT - 1 {
+            /*
+            // spawn border
+            if gx == 0 || gy == 0 || gx == RENDERED_WIDTH - 1 || gy == RENDERED_HEIGHT - 1 {
                 commands.spawn((
                     Sprite {
                         image: wall_texture.clone(),
-                        color: Color::WHITE,
+                        color: Color::srgb(0.1, 0.1, 0.1),
                         ..Default::default()
                     },
-                    Transform::from_xyz(base_x - TILE_SIZE / 2., base_y - TILE_SIZE / 2., 0.0001),
+                    Transform::from_xyz(base_x - TILE_SIZE * 0.5, base_y - TILE_SIZE * 0.5, 1.0001)
+                        .with_scale(Vec3::new(2., 2., 1.0)),
                     GameEntity,
                 ));
             }
+            */
         }
     }
 }

@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::assets;
 use crate::audio;
+use crate::border;
 use crate::collate_src;
 use crate::collider;
 use crate::components;
@@ -38,7 +39,7 @@ impl Plugin for GamePlugin {
             grid_movement::GridMovementPlugin,
             collider::ColliderPlugin,
         ))
-        .add_plugins(projectile::ProjectilePlugin)
+        .add_plugins((projectile::ProjectilePlugin, border::BorderPlugin))
         .add_systems(Startup, setup_scene);
     }
 }

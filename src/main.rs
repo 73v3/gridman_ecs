@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 pub mod assets;
 pub mod audio;
+pub mod border;
 pub mod collate_src;
 pub mod collider;
 pub mod components;
