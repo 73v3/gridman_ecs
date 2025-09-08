@@ -104,7 +104,8 @@ impl Plugin for GridMovementPlugin {
 /// - Advancing movement progress frame-by-frame.
 /// - Reaching a destination tile and deciding what to do next (stop, continue, or change direction).
 /// - Handling collisions with walls, including logic for bouncing projectiles.
-#[allow(clippy::too_many_arguments)] // Bevy systems often require many parameters.
+/// The core system that updates the state of all GridMover components.
+#[allow(clippy::too_many_arguments)]
 fn update_grid_movement(
     mut commands: Commands,
     mut query: Query<(
@@ -125,7 +126,6 @@ fn update_grid_movement(
             let new_dir = intended.0;
             if new_dir != IVec2::ZERO {
                 let next_tile = mover.grid_pos + new_dir;
-
                 // Check if the target tile is valid for movement.
                 let is_tile_wall = is_wall(next_tile, &map_data);
                 let mut is_tile_reserved = false;
@@ -151,7 +151,6 @@ fn update_grid_movement(
         // --- State 2: Entity is currently moving between tiles ---
         } else {
             // Calculate how much to increment progress this frame.
-            // Diagonal movement is faster, so we normalize by the vector length.
             let dir_vec = mover.direction.as_vec2();
             let dist_factor = dir_vec.length();
             if dist_factor == 0.0 {
@@ -182,11 +181,25 @@ fn update_grid_movement(
 
                 if is_continuing {
                     let next_tile = mover.grid_pos + current_direction;
-                    if !is_wall(next_tile, &map_data) {
+                    let is_tile_wall = is_wall(next_tile, &map_data);
+                    let mut is_tile_reserved = false;
+
+                    // Check for reservations if the entity is a GridReserver.
+                    if reserver.is_some() {
+                        if let Some(&occupant) = reservations.0.get(&next_tile) {
+                            is_tile_reserved = occupant != entity;
+                        }
+                    }
+
+                    if !is_tile_wall && !is_tile_reserved {
                         // Path is clear: carry over the "excess" progress for a smooth transition.
                         mover.progress -= 1.0;
+                        // Reserve the new destination tile if this entity is a GridReserver.
+                        if reserver.is_some() {
+                            reservations.0.insert(next_tile, entity);
+                        }
                     } else {
-                        // Wall detected ahead.
+                        // Wall or reserved tile detected ahead.
                         let can_bounce = bouncable.as_ref().map_or(false, |b| b.remaining > 0);
                         if can_bounce {
                             // --- Bouncing Logic ---
@@ -203,6 +216,13 @@ fn update_grid_movement(
                             mover.progress -= 1.0;
                             if new_length > 0.0 && old_length > 0.0 {
                                 mover.progress *= old_length / new_length;
+                            }
+                            // Reserve the new tile after bouncing if this is a reserver.
+                            if reserver.is_some() {
+                                let next_tile = mover.grid_pos + new_dir;
+                                if !is_wall(next_tile, &map_data) {
+                                    reservations.0.insert(next_tile, entity);
+                                }
                             }
                         } else {
                             // Cannot bounce: stop movement.
@@ -221,8 +241,22 @@ fn update_grid_movement(
                     let new_dir = intended.0;
                     if new_dir != IVec2::ZERO {
                         let next_tile = mover.grid_pos + new_dir;
-                        if !is_wall(next_tile, &map_data) {
+                        let is_tile_wall = is_wall(next_tile, &map_data);
+                        let mut is_tile_reserved = false;
+
+                        // Check for reservations if the entity is a GridReserver.
+                        if reserver.is_some() {
+                            if let Some(&occupant) = reservations.0.get(&next_tile) {
+                                is_tile_reserved = occupant != entity;
+                            }
+                        }
+
+                        if !is_tile_wall && !is_tile_reserved {
                             mover.direction = new_dir; // Start moving in the new intended direction.
+                                                       // Reserve the new destination tile if this is a reserver.
+                            if reserver.is_some() {
+                                reservations.0.insert(next_tile, entity);
+                            }
                         } else {
                             mover.direction = IVec2::ZERO; // New direction is blocked, so stop.
                         }
