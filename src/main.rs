@@ -12,6 +12,7 @@ pub mod custom_window;
 pub mod debug;
 pub mod game;
 pub mod grid_movement;
+pub mod grid_reservation;
 pub mod map;
 pub mod player;
 pub mod projectile;

@@ -57,6 +57,16 @@ pub enum MovementSystems {
     AdjustScroll,
     /// Applies any changes to offsets to entity positions.
     ApplyOffsetChanges,
+    // Fix for player sprite ghosting and choppy scrolling:
+    // Player sprite ghosting occurred due to a one-frame delay between updating entity Transforms
+    // (via update_grid_positions) and applying changes to MapOffset/TileOffset during scrolling,
+    // triggered by adjust_scroll_for_buffer in player.rs. This caused misalignment with tilemap updates.
+    //
+    // The MovementSystems::ApplyOffsetChanges set was added to run after MovementSystems::AdjustScroll,
+    // scheduling update_grid_positions when MapOffset or TileOffset changes. This ensures entity positions
+    // (e.g., player, projectiles) are recalculated in the same frame as offset changes, synchronizing
+    // them with tilemap updates for smooth rendering and eliminating lag. The fix is lightweight,
+    // as it affects only a small number of GridMover entities.
 }
 
 /// The plugin that adds all grid movement logic to the application.

@@ -8,6 +8,7 @@ use crate::collider;
 use crate::components;
 use crate::debug;
 use crate::grid_movement;
+use crate::grid_reservation;
 use crate::map;
 use crate::player;
 use crate::projectile;
@@ -39,7 +40,11 @@ impl Plugin for GamePlugin {
             grid_movement::GridMovementPlugin,
             collider::ColliderPlugin,
         ))
-        .add_plugins((projectile::ProjectilePlugin, border::BorderPlugin))
+        .add_plugins((
+            projectile::ProjectilePlugin,
+            border::BorderPlugin,
+            grid_reservation::GridReservationPlugin,
+        ))
         .add_systems(Startup, setup_scene);
     }
 }
