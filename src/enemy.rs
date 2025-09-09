@@ -15,7 +15,7 @@ use crate::player::DEFAULT_PLAYER_SPEED;
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
-const NUM_LEFT_TURNERS: u32 = 15;
+const NUM_LEFT_TURNERS: u32 = 150;
 const NUM_RIGHT_TURNERS: u32 = NUM_LEFT_TURNERS;
 
 const DEFAULT_ENEMY_SPEED: f32 = 0.5 * DEFAULT_PLAYER_SPEED;

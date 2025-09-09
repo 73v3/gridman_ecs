@@ -271,11 +271,7 @@ fn update_borders(
 
 <collider.rs>
 // collider.rs
-use crate::components::GameState;
-use crate::grid_movement::GridMover;
-use crate::grid_reservation::GridReservations;
-use crate::player::Player;
-use crate::projectile::{Bouncable, Projectile};
+//use crate::components::GameState;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -284,74 +280,46 @@ pub struct Collider {
 }
 
 #[derive(Event)]
-pub struct ProjectileCollision {
-    pub projectile: Entity,
-    pub victim: Entity,
+pub struct Collision {
+    pub a: Entity,
+    pub b: Entity,
 }
 
 pub struct ColliderPlugin;
 
 impl Plugin for ColliderPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_event::<ProjectileCollision>().add_systems(
+    fn build(&self, _app: &mut App) {
+        /*
+        app.add_event::<Collision>().add_systems(
             Update,
-            check_projectile_collisions.run_if(in_state(GameState::Playing)),
+            detect_collisions.run_if(in_state(GameState::Playing)),
         );
+        */
     }
 }
 
-/// Checks for collisions by leveraging the grid reservation system.
-/// This is a highly efficient, targeted collision detection method.
-fn check_projectile_collisions(
-    mut events: EventWriter<ProjectileCollision>,
-    reservations: Res<GridReservations>,
-    projectiles: Query<(Entity, &Transform, &Collider, &GridMover, &Bouncable), With<Projectile>>,
-    collidables: Query<(&Transform, &Collider)>,
-    player_query: Query<(), With<Player>>,
+fn _detect_collisions(
+    mut events: EventWriter<Collision>,
+    query: Query<(Entity, &Transform, &Collider)>,
 ) {
-    for (proj_entity, proj_transform, proj_collider, proj_mover, bouncable) in &projectiles {
-        // A projectile is only a threat if it's actively moving towards a new tile.
-        if proj_mover.direction == IVec2::ZERO {
-            continue;
-        }
+    let entities: Vec<(Entity, Vec2, Vec2)> = query
+        .iter()
+        .map(|(e, t, c)| (e, t.translation.xy(), c.size))
+        .collect();
 
-        // --- Broad Phase ---
-        // Determine the tile the projectile is moving into.
-        let target_tile = proj_mover.grid_pos + proj_mover.direction;
+    for i in 0..entities.len() {
+        for j in (i + 1)..entities.len() {
+            let (a, pos_a, size_a) = entities[i];
+            let (b, pos_b, size_b) = entities[j];
 
-        // Check if this target tile is reserved by another entity.
-        if let Some(&victim_entity) = reservations.0.get(&target_tile) {
-            // --- Narrow Phase ---
-            // We have a potential collision. Get the victim's components.
-            // The .get() method on a Query is highly optimized.
-            if let Ok((victim_transform, victim_collider)) = collidables.get(victim_entity) {
-                // Check if the victim is the player and if the projectile hasn't bounced at least once.
-                let is_player = player_query.get(victim_entity).is_ok();
-                let bounced = bouncable.initial.saturating_sub(bouncable.remaining);
-                if is_player && bounced < 1 {
-                    continue; // Skip collision with player if projectile hasn't bounced.
-                }
-
-                // Perform the precise AABB check.
-                if aabb_overlap(
-                    proj_transform.translation.xy(),
-                    proj_collider.size,
-                    victim_transform.translation.xy(),
-                    victim_collider.size,
-                ) {
-                    // Collision confirmed. Write the event.
-                    events.write(ProjectileCollision {
-                        projectile: proj_entity,
-                        victim: victim_entity,
-                    });
-                }
+            if _aabb_overlap(pos_a, size_a, pos_b, size_b) {
+                events.write(Collision { a, b });
             }
         }
     }
 }
 
-/// Checks for overlap between two Axis-Aligned Bounding Boxes.
-pub fn aabb_overlap(pos1: Vec2, size1: Vec2, pos2: Vec2, size2: Vec2) -> bool {
+fn _aabb_overlap(pos1: Vec2, size1: Vec2, pos2: Vec2, size2: Vec2) -> bool {
     let half1 = size1 / 2.0;
     let half2 = size2 / 2.0;
     let min1 = pos1 - half1;
@@ -402,15 +370,12 @@ pub struct ComponentsPlugin;
 
 impl Plugin for ComponentsPlugin {
     fn build(&self, app: &mut App) {
-        // Register the PlayerDied event here.
-        app.add_event::<PlayerDied>()
-            .insert_resource(GameSpeed { value: 1.0 })
-            .add_systems(
-                Update,
-                (update_velocity)
-                    .chain()
-                    .run_if(in_state(GameState::Playing)),
-            );
+        app.insert_resource(GameSpeed { value: 1.0 }).add_systems(
+            Update,
+            (update_velocity)
+                .chain()
+                .run_if(in_state(GameState::Playing)),
+        );
     }
 }
 
@@ -1707,6 +1672,7 @@ fn handle_shoot(
     // Check for the shoot button press.
     if keys.just_pressed(KeyCode::Space) {
         if let Ok((mover, intended)) = query.single() {
+            info!("space pressed");
             // Only shoot if the player has a direction.
             if intended.0 != IVec2::ZERO {
                 let dir = intended.0;
@@ -1734,10 +1700,7 @@ fn handle_shoot(
                         speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
                     },
                     IntendedDirection(dir), // The projectile continues in the player's direction.
-                    Bouncable {
-                        initial: 3, // if a projectile has bounced at least once, it can now hit the player
-                        remaining: 3,
-                    }, // Can bounce off walls 3 times.
+                    Bouncable { remaining: 3 }, // Can bounce off walls 3 times.
                     Collider {
                         size: Vec2::splat(TILE_SIZE * 0.5),
                     },
@@ -1825,66 +1788,25 @@ fn smooth_adjust_scroll(
 </player.rs>
 
 <projectile.rs>
-use crate::collider::ProjectileCollision;
-use crate::components::{GameState, PlayerDied};
-use crate::enemy::Enemy;
-use crate::player::Player;
-use crate::score::ScoreChanged;
+// projectile.rs
 use bevy::prelude::*;
+
+//use crate::components::GameState;
+//use crate::grid_movement::MovementSystems;
 
 #[derive(Component)]
 pub struct Projectile;
 
 #[derive(Component)]
 pub struct Bouncable {
-    pub initial: u32,   // Tracks the initial number of bounces allowed
-    pub remaining: u32, // Tracks the remaining bounces
+    pub remaining: u32,
 }
 
 pub struct ProjectilePlugin;
 
 impl Plugin for ProjectilePlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            handle_projectile_collisions.run_if(in_state(GameState::Playing)),
-        );
-    }
-}
-
-/// Listens for `ProjectileCollision` events and handles the consequences.
-fn handle_projectile_collisions(
-    mut commands: Commands,
-    mut collision_events: EventReader<ProjectileCollision>,
-    mut score_events: EventWriter<ScoreChanged>,
-    mut player_died_events: EventWriter<PlayerDied>,
-    // Query to determine if the victim was a Player or an Enemy.
-    victim_query: Query<(Has<Player>, Has<Enemy>)>,
-) {
-    for event in collision_events.read() {
-        // Despawn the projectile on any confirmed collision.
-        // commands.get_entity() returns a Result, so we use `if let Ok`.
-        if let Ok(mut entity_commands) = commands.get_entity(event.projectile) {
-            entity_commands.despawn();
-        }
-
-        // Check what the victim was and react accordingly.
-        if let Ok((is_player, is_enemy)) = victim_query.get(event.victim) {
-            if is_player {
-                if let Ok(mut entity_commands) = commands.get_entity(event.victim) {
-                    entity_commands.despawn();
-                }
-                // Use .write() to send events, as .send() is deprecated.
-                player_died_events.write(PlayerDied);
-                info!("Player was hit by a projectile!");
-            } else if is_enemy {
-                if let Ok(mut entity_commands) = commands.get_entity(event.victim) {
-                    entity_commands.despawn();
-                }
-                // Use .write() to send events.
-                score_events.write(ScoreChanged);
-            }
-        }
+    fn build(&self, _app: &mut App) {
+        // No additional setup needed, as AudioPlugin is included in DefaultPlugins
     }
 }
 </projectile.rs>
@@ -2477,18 +2399,3 @@ fn update_ui_scale_on_resize(
 }
 </ui_scaling.rs>
 
-<task rules>
-As usual, we require an ECS-first, performant, and elegant solution that perfectly solves our problem while adhering to Bevy's best practices for modularity, efficiency, and maintainability.
-
-We are using Bevy 0.16.1, so avoid all deprecated APIs or fields (e.g., use .delta_secs() instead of .delta_seconds()). Refer to the existing codebase for examples of correct syntax and patterns when in doubt, and ensure compatibility with Bevy's current features.
-
-Before writing any code, think step-by-step through your design strategy out loud: outline the problem requirements, brainstorm multiple architectural options (e.g., different component/system/query designs), evaluate their trade-offs in terms of performance, simplicity, and extensibility, and justify your selection of the optimal approach.
-
-If needed, use the code_execution tool to test small prototypes or verify Bevy-specific behaviors during your reasoning phase.
-
-Professionally comment all new code and retain all existing comments.
-
-Output all changed or new files in full, each in its own code box for easy parsing. Do not output unchanged files or partial diffs—provide complete, compilable files.
-
-After outputting all files in code boxes, provide a concise summary (outside of code boxes) that recaps the key changes, evaluates their merits (e.g., how they improve performance, readability, or solve edge cases), and suggests any potential future improvements.
-</task rules>

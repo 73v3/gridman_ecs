@@ -36,12 +36,15 @@ pub struct ComponentsPlugin;
 
 impl Plugin for ComponentsPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(GameSpeed { value: 1.0 }).add_systems(
-            Update,
-            (update_velocity)
-                .chain()
-                .run_if(in_state(GameState::Playing)),
-        );
+        // Register the PlayerDied event here.
+        app.add_event::<PlayerDied>()
+            .insert_resource(GameSpeed { value: 1.0 })
+            .add_systems(
+                Update,
+                (update_velocity)
+                    .chain()
+                    .run_if(in_state(GameState::Playing)),
+            );
     }
 }
 

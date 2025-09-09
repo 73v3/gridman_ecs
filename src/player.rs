@@ -177,7 +177,6 @@ fn handle_shoot(
     // Check for the shoot button press.
     if keys.just_pressed(KeyCode::Space) {
         if let Ok((mover, intended)) = query.single() {
-            info!("space pressed");
             // Only shoot if the player has a direction.
             if intended.0 != IVec2::ZERO {
                 let dir = intended.0;
@@ -205,7 +204,10 @@ fn handle_shoot(
                         speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
                     },
                     IntendedDirection(dir), // The projectile continues in the player's direction.
-                    Bouncable { remaining: 3 }, // Can bounce off walls 3 times.
+                    Bouncable {
+                        initial: 3, // if a projectile has bounced at least once, it can now hit the player
+                        remaining: 3,
+                    }, // Can bounce off walls 3 times.
                     Collider {
                         size: Vec2::splat(TILE_SIZE * 0.5),
                     },
