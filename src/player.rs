@@ -49,8 +49,6 @@ pub struct Player;
 /// The base speed multiplier for player and projectile movement.
 pub const DEFAULT_PLAYER_SPEED: f32 = 1000.0;
 
-pub const PROJECTILE_SPEED: f32 = 1500.0;
-
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
 const BUFFER_TILES: Vec2 = Vec2::new(8.0, 8.0);
@@ -204,7 +202,7 @@ fn handle_shoot(
                         grid_pos: spawn_pos,
                         direction: IVec2::ZERO, // Initially stationary, will move on next frame.
                         progress: 0.0,
-                        speed: PROJECTILE_SPEED,
+                        speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
                     },
                     IntendedDirection(dir), // The projectile continues in the player's direction.
                     Bouncable { remaining: 3 }, // Can bounce off walls 3 times.
@@ -250,51 +248,45 @@ fn smooth_adjust_scroll(
 
         // Adjust TAU_SCALE based on player's speed relative to DEFAULT_PLAYER_SPEED.
         let speed_ratio = grid_mover.speed / DEFAULT_PLAYER_SPEED;
-        let dynamic_tau_scale = BASE_TAU_SCALE / speed_ratio.max(0.01); // Prevent division by zero or negative
+        let dynamic_tau_scale = BASE_TAU_SCALE / speed_ratio.max(0.001); // Prevent division by zero
 
-        // dynamic_tau_scale *= dynamic_tau_scale;
-        info!("TAU: {:?}", dynamic_tau_scale);
+        // Calculate the desired view center (player position) and interpolate.
+        let diff = player_map_pos - current_view_center;
+        let abs_diff = diff.abs();
+        let half_buf = BUFFER_TILES / 2.0;
 
-        // Handle X-axis lerping.
-        let diff_x = player_map_pos.x - current_view_center.x;
-        let abs_diff_x = diff_x.abs();
-        let half_buf_x = BUFFER_TILES.x / 2.0;
-        if abs_diff_x > half_buf_x {
-            let extra_x = abs_diff_x - half_buf_x;
-            let tau = BASE_TAU / (1.0 + extra_x / dynamic_tau_scale);
-            let alpha = 1.0 - (-time.delta_secs() / tau).exp();
-            current_view_center.x += diff_x * alpha;
+        // Initialize t (interpolation factor) to 0.0 (no movement if within buffer).
+        let mut t = 0.0;
+
+        // Check if player is outside the buffer zone on either axis.
+        if abs_diff.x > half_buf.x || abs_diff.y > half_buf.y {
+            // Compute interpolation factor t based on distance beyond buffer.
+            let extra = (abs_diff - half_buf).max(Vec2::ZERO);
+            let tau = BASE_TAU / (1.0 + extra.length() / dynamic_tau_scale);
+            t = 1.0 - (-time.delta_secs() / tau).exp();
         }
 
-        // Handle Y-axis lerping.
-        let diff_y = player_map_pos.y - current_view_center.y;
-        let abs_diff_y = diff_y.abs();
-        let half_buf_y = BUFFER_TILES.y / 2.0;
-        if abs_diff_y > half_buf_y {
-            let extra_y = abs_diff_y - half_buf_y;
-            let tau = BASE_TAU / (1.0 + extra_y / dynamic_tau_scale);
-            let alpha = 1.0 - (-time.delta_secs() / tau).exp();
-            current_view_center.y += diff_y * alpha;
-        }
+        // Use Vec2::lerp to interpolate towards the player's position.
+        current_view_center = current_view_center.lerp(player_map_pos, t);
+
+        // Compute the new view left and top edges.
+        let mut new_view_left = current_view_center.x - HALF_WIDTH;
+        let mut new_view_top = current_view_center.y - HALF_HEIGHT;
+
+        // Clamp to map boundaries.
+        let max_left = (map_data.width as f32 - RENDERED_WIDTH as f32).max(0.0);
+        let max_top = (map_data.height as f32 - RENDERED_HEIGHT as f32).max(0.0);
+        new_view_left = new_view_left.clamp(0.0, max_left);
+        new_view_top = new_view_top.clamp(0.0, max_top);
+
+        // Update map_offset and tile_offset for X.
+        map_offset.0.x = new_view_left.floor() as i32;
+        let frac_x = new_view_left - map_offset.0.x as f32;
+        tile_offset.0.x = -frac_x * TILE_SIZE;
+
+        // Update map_offset and tile_offset for Y.
+        map_offset.0.y = new_view_top.floor() as i32;
+        let frac_y = new_view_top - map_offset.0.y as f32;
+        tile_offset.0.y = -frac_y * TILE_SIZE;
     }
-
-    // Compute the new view left and top edges.
-    let mut new_view_left = current_view_center.x - HALF_WIDTH;
-    let mut new_view_top = current_view_center.y - HALF_HEIGHT;
-
-    // Clamp to map boundaries.
-    let max_left = (map_data.width as f32 - RENDERED_WIDTH as f32).max(0.0);
-    let max_top = (map_data.height as f32 - RENDERED_HEIGHT as f32).max(0.0);
-    new_view_left = new_view_left.clamp(0.0, max_left);
-    new_view_top = new_view_top.clamp(0.0, max_top);
-
-    // Update map_offset and tile_offset for X.
-    map_offset.0.x = new_view_left.floor() as i32;
-    let frac_x = new_view_left - map_offset.0.x as f32;
-    tile_offset.0.x = -frac_x * TILE_SIZE;
-
-    // Update map_offset and tile_offset for Y.
-    map_offset.0.y = new_view_top.floor() as i32;
-    let frac_y = new_view_top - map_offset.0.y as f32;
-    tile_offset.0.y = -frac_y * TILE_SIZE;
 }
