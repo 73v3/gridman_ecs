@@ -15,8 +15,10 @@ use crate::player::DEFAULT_PLAYER_SPEED;
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
-const NUM_LEFT_TURNERS: u32 = 500;
+const NUM_LEFT_TURNERS: u32 = 15;
 const NUM_RIGHT_TURNERS: u32 = NUM_LEFT_TURNERS;
+
+const DEFAULT_ENEMY_SPEED: f32 = 0.5 * DEFAULT_PLAYER_SPEED;
 
 /// A plugin for all enemy-related logic.
 pub struct EnemyPlugin;
@@ -121,7 +123,7 @@ fn spawn_enemies(
                     grid_pos: spawn_pos,
                     direction: IVec2::ZERO,
                     progress: 0.0,
-                    speed: 10.0 * DEFAULT_PLAYER_SPEED,
+                    speed: DEFAULT_ENEMY_SPEED,
                 },
                 IntendedDirection(start_dir),
                 LeftTurner {
@@ -155,7 +157,7 @@ fn spawn_enemies(
                     grid_pos: spawn_pos,
                     direction: IVec2::ZERO,
                     progress: 0.0,
-                    speed: 10.0 * DEFAULT_PLAYER_SPEED,
+                    speed: DEFAULT_ENEMY_SPEED,
                 },
                 IntendedDirection(start_dir),
                 RightTurner {

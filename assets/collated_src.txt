@@ -525,8 +525,10 @@ use crate::player::DEFAULT_PLAYER_SPEED;
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
-const NUM_LEFT_TURNERS: u32 = 500;
+const NUM_LEFT_TURNERS: u32 = 15;
 const NUM_RIGHT_TURNERS: u32 = NUM_LEFT_TURNERS;
+
+const DEFAULT_ENEMY_SPEED: f32 = 0.5 * DEFAULT_PLAYER_SPEED;
 
 /// A plugin for all enemy-related logic.
 pub struct EnemyPlugin;
@@ -631,7 +633,7 @@ fn spawn_enemies(
                     grid_pos: spawn_pos,
                     direction: IVec2::ZERO,
                     progress: 0.0,
-                    speed: 10.0 * DEFAULT_PLAYER_SPEED,
+                    speed: DEFAULT_ENEMY_SPEED,
                 },
                 IntendedDirection(start_dir),
                 LeftTurner {
@@ -665,7 +667,7 @@ fn spawn_enemies(
                     grid_pos: spawn_pos,
                     direction: IVec2::ZERO,
                     progress: 0.0,
-                    speed: 10.0 * DEFAULT_PLAYER_SPEED,
+                    speed: DEFAULT_ENEMY_SPEED,
                 },
                 IntendedDirection(start_dir),
                 RightTurner {
@@ -1493,7 +1495,7 @@ impl Plugin for PlayerPlugin {
                     handle_player_input.in_set(MovementSystems::Input),
                     handle_shoot.in_set(MovementSystems::Input),
                     // Camera scrolling logic runs after the player's position has been updated.
-                    adjust_scroll_for_buffer.in_set(MovementSystems::AdjustScroll),
+                    smooth_adjust_scroll.in_set(MovementSystems::AdjustScroll),
                 )
                     .run_if(in_state(GameState::Playing)),
             );
@@ -1505,10 +1507,19 @@ impl Plugin for PlayerPlugin {
 pub struct Player;
 
 /// The base speed multiplier for player and projectile movement.
-pub const DEFAULT_PLAYER_SPEED: f32 = 50.0;
+pub const DEFAULT_PLAYER_SPEED: f32 = 1000.0;
+
+pub const PROJECTILE_SPEED: f32 = 1500.0;
+
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
 const BUFFER_TILES: Vec2 = Vec2::new(8.0, 8.0);
+
+/// Constants for controlling the smoothness of the camera follow.
+/// BASE_TAU is the base time constant (in seconds) for the exponential lerp when the player is just outside the buffer.
+/// TAU_SCALE determines how much the time constant decreases (speed increases) for each additional tile beyond the buffer.
+const BASE_TAU: f32 = 4.0;
+const BASE_TAU_SCALE: f32 = 1.0;
 
 /// Spawns the player entity at a random, valid (non-wall) location on the map.
 ///
@@ -1569,7 +1580,7 @@ fn spawn_player(
                 grid_pos: IVec2::new(mx, my),
                 direction: IVec2::ZERO,
                 progress: 0.0,
-                speed: 20.0 * DEFAULT_PLAYER_SPEED,
+                speed: DEFAULT_PLAYER_SPEED,
             },
             IntendedDirection(IVec2::ZERO),
             GameEntity, // Marker for cleanup when returning to the title screen.
@@ -1653,7 +1664,7 @@ fn handle_shoot(
                         grid_pos: spawn_pos,
                         direction: IVec2::ZERO, // Initially stationary, will move on next frame.
                         progress: 0.0,
-                        speed: 30.0 * DEFAULT_PLAYER_SPEED,
+                        speed: PROJECTILE_SPEED,
                     },
                     IntendedDirection(dir), // The projectile continues in the player's direction.
                     Bouncable { remaining: 3 }, // Can bounce off walls 3 times.
@@ -1669,67 +1680,83 @@ fn handle_shoot(
     }
 }
 
-/// Implements camera scrolling by adjusting map and tile offsets.
+/// Implements smooth camera scrolling by lerping the map and tile offsets.
 ///
-/// This function creates a "deadzone" or buffer around the center of the screen. The
-/// map remains static until the player moves outside this buffer. Once the player crosses
-/// the buffer boundary, the `tile_offset` is adjusted to smoothly scroll the world,
-/// keeping the player within the buffer. When the `tile_offset` exceeds the size of a
-/// full tile, it "wraps around," and the integer-based `map_offset` is updated. This
-/// entire process is clamped to prevent the camera from scrolling past the map's edges.
-fn adjust_scroll_for_buffer(
-    query_player: Query<&Transform, With<Player>>,
+/// This function uses an exponential lerp to smoothly adjust the view center towards the player's
+/// map position when the player is outside the central buffer zone. The lerp strength increases
+/// (time constant decreases) as the player gets farther from the center, preventing the player
+/// from racing too far offscreen. The view is clamped to the map boundaries.
+fn smooth_adjust_scroll(
+    query_player: Query<(&Transform, &GridMover), With<Player>>,
     mut map_offset: ResMut<MapOffset>,
     mut tile_offset: ResMut<TileOffset>,
     map_data: Res<MapData>,
+    time: Res<Time>,
 ) {
-    // Calculate the pixel dimensions of the central buffer zone.
-    let half_buffer = BUFFER_TILES * TILE_SIZE / 2.0;
+    // Compute the current view center in map coordinates.
+    let mut current_view_center = Vec2::new(
+        map_offset.0.x as f32 - tile_offset.0.x / TILE_SIZE + HALF_WIDTH,
+        map_offset.0.y as f32 - tile_offset.0.y / TILE_SIZE + HALF_HEIGHT,
+    );
 
-    if let Ok(player_tr) = query_player.single() {
-        let p = player_tr.translation.xy();
-        let mut delta = Vec2::ZERO;
+    if let Ok((player_tr, grid_mover)) = query_player.single() {
+        let player_screen = player_tr.translation.xy();
 
-        // Check if the player's screen position has exceeded the buffer boundaries.
-        if p.x > half_buffer.x {
-            delta.x = p.x - half_buffer.x;
-        } else if p.x < -half_buffer.x {
-            delta.x = p.x + half_buffer.x;
+        // Compute the player's current position in map coordinates.
+        let player_map_pos = Vec2::new(
+            (player_screen.x - tile_offset.0.x) / TILE_SIZE + map_offset.0.x as f32 + HALF_WIDTH,
+            (player_screen.y - tile_offset.0.y) / TILE_SIZE + map_offset.0.y as f32 + HALF_HEIGHT,
+        );
+
+        // Adjust TAU_SCALE based on player's speed relative to DEFAULT_PLAYER_SPEED.
+        let speed_ratio = grid_mover.speed / DEFAULT_PLAYER_SPEED;
+        let dynamic_tau_scale = BASE_TAU_SCALE / speed_ratio.max(0.01); // Prevent division by zero or negative
+
+        // dynamic_tau_scale *= dynamic_tau_scale;
+        info!("TAU: {:?}", dynamic_tau_scale);
+
+        // Handle X-axis lerping.
+        let diff_x = player_map_pos.x - current_view_center.x;
+        let abs_diff_x = diff_x.abs();
+        let half_buf_x = BUFFER_TILES.x / 2.0;
+        if abs_diff_x > half_buf_x {
+            let extra_x = abs_diff_x - half_buf_x;
+            let tau = BASE_TAU / (1.0 + extra_x / dynamic_tau_scale);
+            let alpha = 1.0 - (-time.delta_secs() / tau).exp();
+            current_view_center.x += diff_x * alpha;
         }
-        if p.y > half_buffer.y {
-            delta.y = p.y - half_buffer.y;
-        } else if p.y < -half_buffer.y {
-            delta.y = p.y + half_buffer.y;
-        }
 
-        // If the player is outside the buffer, adjust the tile offset to scroll the map.
-        if delta != Vec2::ZERO {
-            tile_offset.0 -= delta;
+        // Handle Y-axis lerping.
+        let diff_y = player_map_pos.y - current_view_center.y;
+        let abs_diff_y = diff_y.abs();
+        let half_buf_y = BUFFER_TILES.y / 2.0;
+        if abs_diff_y > half_buf_y {
+            let extra_y = abs_diff_y - half_buf_y;
+            let tau = BASE_TAU / (1.0 + extra_y / dynamic_tau_scale);
+            let alpha = 1.0 - (-time.delta_secs() / tau).exp();
+            current_view_center.y += diff_y * alpha;
         }
     }
 
-    // Define map and view dimensions for clamping.
-    let map_width_i = map_data.width as i32;
-    let map_height_i = map_data.height as i32;
-    let view_width = RENDERED_WIDTH as i32;
-    let view_height = RENDERED_HEIGHT as i32;
-    let max_map_x = (map_width_i - view_width).max(0);
-    let max_map_y = (map_height_i - view_height).max(0);
+    // Compute the new view left and top edges.
+    let mut new_view_left = current_view_center.x - HALF_WIDTH;
+    let mut new_view_top = current_view_center.y - HALF_HEIGHT;
 
-    // This section handles the "wrapping" of the tile_offset into the map_offset
-    // and clamps the final view position to the map boundaries.
+    // Clamp to map boundaries.
+    let max_left = (map_data.width as f32 - RENDERED_WIDTH as f32).max(0.0);
+    let max_top = (map_data.height as f32 - RENDERED_HEIGHT as f32).max(0.0);
+    new_view_left = new_view_left.clamp(0.0, max_left);
+    new_view_top = new_view_top.clamp(0.0, max_top);
 
-    // Handle X-axis scrolling and clamping.
-    let mut view_left = map_offset.0.x as f32 - tile_offset.0.x / TILE_SIZE;
-    view_left = view_left.clamp(0.0, max_map_x as f32);
-    map_offset.0.x = view_left.floor() as i32;
-    tile_offset.0.x = -(view_left - map_offset.0.x as f32) * TILE_SIZE;
+    // Update map_offset and tile_offset for X.
+    map_offset.0.x = new_view_left.floor() as i32;
+    let frac_x = new_view_left - map_offset.0.x as f32;
+    tile_offset.0.x = -frac_x * TILE_SIZE;
 
-    // Handle Y-axis scrolling and clamping.
-    let mut view_top = map_offset.0.y as f32 - tile_offset.0.y / TILE_SIZE;
-    view_top = view_top.clamp(0.0, max_map_y as f32);
-    map_offset.0.y = view_top.floor() as i32;
-    tile_offset.0.y = -(view_top - map_offset.0.y as f32) * TILE_SIZE;
+    // Update map_offset and tile_offset for Y.
+    map_offset.0.y = new_view_top.floor() as i32;
+    let frac_y = new_view_top - map_offset.0.y as f32;
+    tile_offset.0.y = -frac_y * TILE_SIZE;
 }
 </player.rs>
 
