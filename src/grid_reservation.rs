@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 /// When set to true, spawns a sprite for each grid cell reservation for debugging.
-const VISUAL_DEBUG_RESERVATIONS: bool = true;
+const VISUAL_DEBUG_RESERVATIONS: bool = !true;
 
 pub struct GridReservationPlugin;
 

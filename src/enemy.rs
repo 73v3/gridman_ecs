@@ -15,8 +15,8 @@ use crate::player::DEFAULT_PLAYER_SPEED;
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
-const NUM_LEFT_TURNERS: u32 = 1500;
-const NUM_RIGHT_TURNERS: u32 = 1500;
+const NUM_LEFT_TURNERS: u32 = 50;
+const NUM_RIGHT_TURNERS: u32 = 50;
 
 /// A plugin for all enemy-related logic.
 pub struct EnemyPlugin;

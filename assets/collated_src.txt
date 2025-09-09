@@ -236,7 +236,7 @@ fn update_borders(
 
 <collider.rs>
 // collider.rs
-use crate::components::GameState;
+//use crate::components::GameState;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -374,7 +374,7 @@ impl Plugin for CustomWindowPlugin {
                     .set(bevy::window::WindowPlugin {
                         primary_window: Some(Window {
                             title: GAME_TITLE.to_string(),
-                            present_mode: PresentMode::AutoVsync,
+                            present_mode: PresentMode::AutoNoVsync,
                             mode: WindowMode::Windowed,
                             position: WindowPosition::Centered(MonitorSelection::Primary),
                             resolution: WindowResolution::new(800.0, 600.0),
@@ -406,14 +406,75 @@ pub fn close_on_esc(
 </custom_window.rs>
 
 <debug.rs>
-use crate::components::GameState;
+use crate::assets::GameAssets;
+use crate::components::{GameEntity, GameState};
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
+use std::time::Duration;
 
 pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, test_clear.run_if(in_state(GameState::Playing)));
+        app.add_systems(OnEnter(GameState::Playing), setup_fps_display)
+            .add_systems(
+                Update,
+                (update_fps_display, test_clear).run_if(in_state(GameState::Playing)),
+            );
+    }
+}
+
+#[derive(Component)]
+struct FpsText;
+
+fn setup_fps_display(mut commands: Commands, game_assets: Res<GameAssets>) {
+    info!("Setting up FPS display");
+    commands.spawn((
+        Text::new("FPS: --"),
+        TextFont {
+            font: game_assets.font.clone(),
+            font_size: 8.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.9, 0.9, 0.9)), // Light gray for minimalist look
+        TextLayout::new_with_justify(JustifyText::Left),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(10.0),
+            left: Val::Px(10.0),
+            ..default()
+        },
+        BackgroundColor(Color::NONE),
+        FpsText,
+        GameEntity, // Ensures cleanup when exiting GameState::Playing
+    ));
+}
+
+fn update_fps_display(
+    diagnostics: Res<DiagnosticsStore>,
+    mut query: Query<&mut Text, With<FpsText>>,
+    time: Res<Time>,
+    mut timer: Local<Timer>, // Local timer to track update interval
+) {
+    // Update every 0.5 seconds
+    timer.tick(Duration::from_secs_f32(time.delta_secs()));
+    if !timer.just_finished() {
+        return;
+    }
+    timer.set_duration(Duration::from_secs_f32(0.5));
+    timer.reset();
+
+    if let Ok(mut text) = query.single_mut() {
+        // Get FPS from diagnostics
+        if let Some(fps) = diagnostics
+            .get(&FrameTimeDiagnosticsPlugin::FPS)
+            .and_then(|fps| fps.smoothed())
+        {
+            text.0 = format!("FPS: {:.0}", fps);
+        } else {
+            info!("FPS diagnostic not available");
+            text.0 = "FPS: --".to_string();
+        }
     }
 }
 
@@ -426,10 +487,7 @@ fn test_clear(keys: Res<ButtonInput<KeyCode>>) {
 
 <diagnostics.rs>
 // diagnostics.rs
-use bevy::{
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::*,
-};
+use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*};
 
 pub struct DiagnosticsPlugin;
 
@@ -437,13 +495,14 @@ impl Plugin for DiagnosticsPlugin {
     fn build(&self, app: &mut App) {
         app
             // Adds frame time diagnostics (FPS, frame time, etc.)
-            .add_plugins(FrameTimeDiagnosticsPlugin::default())
-            // Logs diagnostics to the console at regular intervals
-            .add_plugins(LogDiagnosticsPlugin::default())
-            // Optional diagnostic plugins (uncomment to enable)
-            // .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin::default())
-            // .add_plugins(bevy::asset::diagnostic::AssetCountDiagnosticsPlugin::<Texture>::default())
-            .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin::default());
+            .add_plugins(FrameTimeDiagnosticsPlugin::default());
+        // Logs diagnostics to the console at regular intervals
+        //.add_plugins(LogDiagnosticsPlugin::default())
+        // Optional diagnostic plugins (uncomment to enable)
+        // .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin::default())
+        // .add_plugins(bevy::asset::diagnostic::AssetCountDiagnosticsPlugin::<Texture>::default())
+        // .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin::default());
+        //
     }
 }
 </diagnostics.rs>
@@ -466,8 +525,8 @@ use crate::player::DEFAULT_PLAYER_SPEED;
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
-const NUM_LEFT_TURNERS: u32 = 1500;
-const NUM_RIGHT_TURNERS: u32 = 1500;
+const NUM_LEFT_TURNERS: u32 = 50;
+const NUM_RIGHT_TURNERS: u32 = 50;
 
 /// A plugin for all enemy-related logic.
 pub struct EnemyPlugin;
@@ -1158,7 +1217,7 @@ use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 /// When set to true, spawns a sprite for each grid cell reservation for debugging.
-const VISUAL_DEBUG_RESERVATIONS: bool = true;
+const VISUAL_DEBUG_RESERVATIONS: bool = !true;
 
 pub struct GridReservationPlugin;
 
@@ -1449,7 +1508,7 @@ pub struct Player;
 pub const DEFAULT_PLAYER_SPEED: f32 = 50.0;
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
-const BUFFER_TILES: Vec2 = Vec2::new(4.0, 4.0);
+const BUFFER_TILES: Vec2 = Vec2::new(8.0, 8.0);
 
 /// Spawns the player entity at a random, valid (non-wall) location on the map.
 ///

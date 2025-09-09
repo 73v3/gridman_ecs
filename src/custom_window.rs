@@ -14,7 +14,7 @@ impl Plugin for CustomWindowPlugin {
                     .set(bevy::window::WindowPlugin {
                         primary_window: Some(Window {
                             title: GAME_TITLE.to_string(),
-                            present_mode: PresentMode::AutoVsync,
+                            present_mode: PresentMode::AutoNoVsync,
                             mode: WindowMode::Windowed,
                             position: WindowPosition::Centered(MonitorSelection::Primary),
                             resolution: WindowResolution::new(800.0, 600.0),

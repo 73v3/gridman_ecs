@@ -50,7 +50,7 @@ pub struct Player;
 pub const DEFAULT_PLAYER_SPEED: f32 = 50.0;
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
-const BUFFER_TILES: Vec2 = Vec2::new(4.0, 4.0);
+const BUFFER_TILES: Vec2 = Vec2::new(8.0, 8.0);
 
 /// Spawns the player entity at a random, valid (non-wall) location on the map.
 ///

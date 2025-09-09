@@ -1,5 +1,5 @@
 // collider.rs
-use crate::components::GameState;
+//use crate::components::GameState;
 use bevy::prelude::*;
 
 #[derive(Component)]

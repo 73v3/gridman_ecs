@@ -10,10 +10,13 @@ bevy = { version = "0.16.1", features = [
     "bevy_sprite",
     "bevy_audio",
     "dynamic_linking",
+ #   "bevy_dev_tools",
 ] }
 
 rand_core = "0.9"
 bevy_rand = { version = "0.11", features = ["wyrand"] }
+
+
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
