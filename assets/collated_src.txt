@@ -22,6 +22,7 @@ pub struct GameAssets {
     pub wall_texture: Handle<Image>,
     pub player_texture: Handle<Image>,
     pub reservation_texture: Handle<Image>,
+    pub enemy_texture: Handle<Image>,
     pub font: Handle<Font>,
     pub shoot_sfx: Handle<AudioSource>,
     pub palette: Palette,
@@ -50,6 +51,7 @@ fn load_assets(
         wall_texture: asset_server.load("textures/wall.png"),
         player_texture: asset_server.load("textures/player.png"),
         reservation_texture: asset_server.load("textures/reservation.png"),
+        enemy_texture: asset_server.load("textures/enemy.png"),
         font: asset_server.load("fonts/press_start_2p/PressStart2P-Regular.ttf"),
         shoot_sfx: asset_server.load("sfx/shoot.wav"),
         palette,
@@ -118,13 +120,15 @@ impl Plugin for BorderPlugin {
 }
 
 fn spawn_borders(mut commands: Commands) {
+    let z_pos: f32 = 2.;
+
     commands.spawn((
         Sprite {
             color: Color::srgb(0.1, 0.1, 0.1),
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Left,
         GameEntity,
     ));
@@ -134,7 +138,7 @@ fn spawn_borders(mut commands: Commands) {
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Right,
         GameEntity,
     ));
@@ -144,7 +148,7 @@ fn spawn_borders(mut commands: Commands) {
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Top,
         GameEntity,
     ));
@@ -154,7 +158,7 @@ fn spawn_borders(mut commands: Commands) {
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Bottom,
         GameEntity,
     ));
@@ -232,6 +236,7 @@ fn update_borders(
 
 <collider.rs>
 // collider.rs
+use crate::components::GameState;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -248,15 +253,17 @@ pub struct Collision {
 pub struct ColliderPlugin;
 
 impl Plugin for ColliderPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&self, _app: &mut App) {
+        /*
         app.add_event::<Collision>().add_systems(
             Update,
-            detect_collisions.run_if(in_state(crate::components::GameState::Playing)),
+            detect_collisions.run_if(in_state(GameState::Playing)),
         );
+        */
     }
 }
 
-fn detect_collisions(
+fn _detect_collisions(
     mut events: EventWriter<Collision>,
     query: Query<(Entity, &Transform, &Collider)>,
 ) {
@@ -270,14 +277,14 @@ fn detect_collisions(
             let (a, pos_a, size_a) = entities[i];
             let (b, pos_b, size_b) = entities[j];
 
-            if aabb_overlap(pos_a, size_a, pos_b, size_b) {
+            if _aabb_overlap(pos_a, size_a, pos_b, size_b) {
                 events.write(Collision { a, b });
             }
         }
     }
 }
 
-fn aabb_overlap(pos1: Vec2, size1: Vec2, pos2: Vec2, size2: Vec2) -> bool {
+fn _aabb_overlap(pos1: Vec2, size1: Vec2, pos2: Vec2, size2: Vec2) -> bool {
     let half1 = size1 / 2.0;
     let half2 = size2 / 2.0;
     let min1 = pos1 - half1;
@@ -417,6 +424,326 @@ fn test_clear(keys: Res<ButtonInput<KeyCode>>) {
 }
 </debug.rs>
 
+<diagnostics.rs>
+// diagnostics.rs
+use bevy::{
+    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    prelude::*,
+};
+
+pub struct DiagnosticsPlugin;
+
+impl Plugin for DiagnosticsPlugin {
+    fn build(&self, app: &mut App) {
+        app
+            // Adds frame time diagnostics (FPS, frame time, etc.)
+            .add_plugins(FrameTimeDiagnosticsPlugin::default())
+            // Logs diagnostics to the console at regular intervals
+            .add_plugins(LogDiagnosticsPlugin::default())
+            // Optional diagnostic plugins (uncomment to enable)
+            // .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin::default())
+            // .add_plugins(bevy::asset::diagnostic::AssetCountDiagnosticsPlugin::<Texture>::default())
+            .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin::default());
+    }
+}
+</diagnostics.rs>
+
+<enemy.rs>
+// enemy.rs
+
+//! Manages enemy spawning, AI, and behavior.
+
+use bevy::prelude::*;
+use bevy_rand::prelude::{GlobalEntropy, WyRand};
+
+use crate::assets::GameAssets;
+use crate::collider::Collider;
+use crate::components::{GameEntity, GameState};
+use crate::grid_movement::{self, GridMover, IntendedDirection, MovementSystems};
+use crate::grid_reservation::{GridReservations, GridReserver};
+use crate::map::MapData;
+use crate::player::DEFAULT_PLAYER_SPEED;
+use crate::random::{random_colour, random_float};
+use crate::tilemap::TILE_SIZE;
+
+const NUM_LEFT_TURNERS: u32 = 1500;
+const NUM_RIGHT_TURNERS: u32 = 1500;
+
+/// A plugin for all enemy-related logic.
+pub struct EnemyPlugin;
+
+impl Plugin for EnemyPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(GameState::Title), setup_enemy_colors)
+            .add_systems(OnEnter(GameState::Playing), spawn_enemies)
+            .configure_sets(
+                Update,
+                // The AI systems must run before the movement system to avoid a 1-frame delay.
+                EnemyMovementAI.before(MovementSystems::UpdateMover),
+            )
+            .add_systems(
+                Update,
+                (update_left_turners, update_right_turners)
+                    .in_set(EnemyMovementAI)
+                    .run_if(in_state(GameState::Playing)),
+            );
+    }
+}
+
+/// A SystemSet for enemy AI logic to ensure it runs before movement is executed.
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct EnemyMovementAI;
+
+/// A marker component for any enemy entity.
+#[derive(Component)]
+pub struct Enemy;
+
+/// A stateful component for enemies that prefer turning left.
+#[derive(Component)]
+pub struct LeftTurner {
+    /// The last direction the enemy was intentionally moving.
+    /// This is crucial for making turn decisions after being stopped by a collision.
+    pub last_known_direction: IVec2,
+}
+
+/// A stateful component for enemies that prefer turning right.
+#[derive(Component)]
+pub struct RightTurner {
+    /// The last direction the enemy was intentionally moving.
+    pub last_known_direction: IVec2,
+}
+
+/// A resource to store the globally chosen colors for each enemy type.
+#[derive(Resource)]
+pub struct EnemyColors {
+    pub left_turner: Color,
+    pub right_turner: Color,
+}
+
+/// Runs once to select and store the colors for enemies.
+fn setup_enemy_colors(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    mut rng: GlobalEntropy<WyRand>,
+) {
+    let color_a = random_colour(&mut rng, &game_assets);
+    let mut color_b = random_colour(&mut rng, &game_assets);
+    // Ensure the two colors are different.
+    while color_a == color_b {
+        color_b = random_colour(&mut rng, &game_assets);
+    }
+    commands.insert_resource(EnemyColors {
+        left_turner: color_a,
+        right_turner: color_b,
+    });
+}
+
+/// Spawns all initial enemies in random, valid locations.
+fn spawn_enemies(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    mut rng: GlobalEntropy<WyRand>,
+    map_data: Res<MapData>,
+    mut reservations: ResMut<GridReservations>,
+    enemy_colors: Res<EnemyColors>,
+) {
+    let valid_directions = [
+        IVec2::new(0, 1),
+        IVec2::new(0, -1),
+        IVec2::new(1, 0),
+        IVec2::new(-1, 0),
+    ];
+
+    // Spawn LeftTurners
+    for _ in 0..NUM_LEFT_TURNERS {
+        let (spawn_pos, start_dir) =
+            find_valid_spawn(&mut rng, &map_data, &reservations, &valid_directions);
+
+        let entity = commands
+            .spawn((
+                Sprite {
+                    color: enemy_colors.left_turner,
+                    image: game_assets.enemy_texture.clone(),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, 0.9),
+                Enemy,
+                GridMover {
+                    grid_pos: spawn_pos,
+                    direction: IVec2::ZERO,
+                    progress: 0.0,
+                    speed: 10.0 * DEFAULT_PLAYER_SPEED,
+                },
+                IntendedDirection(start_dir),
+                LeftTurner {
+                    last_known_direction: start_dir,
+                },
+                GridReserver,
+                Collider {
+                    size: Vec2::splat(TILE_SIZE * 0.5),
+                },
+                GameEntity,
+            ))
+            .id();
+        reservations.0.insert(spawn_pos, entity);
+    }
+
+    // Spawn RightTurners
+    for _ in 0..NUM_RIGHT_TURNERS {
+        let (spawn_pos, start_dir) =
+            find_valid_spawn(&mut rng, &map_data, &reservations, &valid_directions);
+
+        let entity = commands
+            .spawn((
+                Sprite {
+                    color: enemy_colors.right_turner,
+                    image: game_assets.enemy_texture.clone(),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, 0.9),
+                Enemy,
+                GridMover {
+                    grid_pos: spawn_pos,
+                    direction: IVec2::ZERO,
+                    progress: 0.0,
+                    speed: 10.0 * DEFAULT_PLAYER_SPEED,
+                },
+                IntendedDirection(start_dir),
+                RightTurner {
+                    last_known_direction: start_dir,
+                },
+                GridReserver,
+                Collider {
+                    size: Vec2::splat(TILE_SIZE * 0.5),
+                },
+                GameEntity,
+            ))
+            .id();
+        reservations.0.insert(spawn_pos, entity);
+    }
+}
+
+/// The AI system for LeftTurner enemies.
+/// It decides on a new direction when the current path is blocked.
+fn update_left_turners(
+    mut query: Query<(Entity, &mut IntendedDirection, &GridMover, &mut LeftTurner)>,
+    reservations: Res<GridReservations>,
+    map_data: Res<MapData>,
+) {
+    for (entity, mut intended, mover, mut turner) in &mut query {
+        // If the entity is moving, update its last known direction and do nothing else.
+        if intended.0 != IVec2::ZERO {
+            turner.last_known_direction = intended.0;
+            continue;
+        }
+
+        // The entity has been stopped. Decide where to go next based on its last direction.
+        let forward_dir = turner.last_known_direction;
+        let current_pos = mover.grid_pos;
+
+        // Priority: Left, Right, Back.
+        let left_dir = IVec2::new(forward_dir.y, -forward_dir.x);
+        let right_dir = IVec2::new(-forward_dir.y, forward_dir.x);
+        let back_dir = -forward_dir;
+
+        let new_dir = if !is_blocked(current_pos + left_dir, entity, &reservations, &map_data) {
+            left_dir
+        } else if !is_blocked(current_pos + right_dir, entity, &reservations, &map_data) {
+            right_dir
+        } else {
+            back_dir
+        };
+
+        intended.0 = new_dir;
+        turner.last_known_direction = new_dir;
+    }
+}
+
+/// The AI system for RightTurner enemies.
+/// It decides on a new direction when the current path is blocked.
+fn update_right_turners(
+    mut query: Query<(Entity, &mut IntendedDirection, &GridMover, &mut RightTurner)>,
+    reservations: Res<GridReservations>,
+    map_data: Res<MapData>,
+) {
+    for (entity, mut intended, mover, mut turner) in &mut query {
+        // If the entity is moving, update its last known direction and do nothing else.
+        if intended.0 != IVec2::ZERO {
+            turner.last_known_direction = intended.0;
+            continue;
+        }
+
+        // The entity has been stopped. Decide where to go next based on its last direction.
+        let forward_dir = turner.last_known_direction;
+        let current_pos = mover.grid_pos;
+
+        // Priority: Right, Left, Back.
+        let right_dir = IVec2::new(-forward_dir.y, forward_dir.x);
+        let left_dir = IVec2::new(forward_dir.y, -forward_dir.x);
+        let back_dir = -forward_dir;
+
+        let new_dir = if !is_blocked(current_pos + right_dir, entity, &reservations, &map_data) {
+            right_dir
+        } else if !is_blocked(current_pos + left_dir, entity, &reservations, &map_data) {
+            left_dir
+        } else {
+            back_dir
+        };
+
+        intended.0 = new_dir;
+        turner.last_known_direction = new_dir;
+    }
+}
+
+/// Helper to check if a target grid cell is a wall or reserved by another entity.
+fn is_blocked(
+    target_pos: IVec2,
+    self_entity: Entity,
+    reservations: &GridReservations,
+    map_data: &MapData,
+) -> bool {
+    if grid_movement::is_wall(target_pos, map_data) {
+        return true;
+    }
+    if let Some(&occupant) = reservations.0.get(&target_pos) {
+        // A tile is only blocked if another entity occupies it.
+        if occupant != self_entity {
+            return true;
+        }
+    }
+    false
+}
+
+/// Finds a random, non-wall, non-reserved grid cell to spawn an entity.
+fn find_valid_spawn(
+    rng: &mut GlobalEntropy<WyRand>,
+    map_data: &MapData,
+    reservations: &GridReservations,
+    directions: &[IVec2],
+) -> (IVec2, IVec2) {
+    let width = map_data.width as i32;
+    let height = map_data.height as i32;
+
+    loop {
+        let x = (random_float(rng) * width as f32) as i32;
+        let y = (random_float(rng) * height as f32) as i32;
+        let pos = IVec2::new(x, y);
+
+        if !grid_movement::is_wall(pos, map_data) && !reservations.0.contains_key(&pos) {
+            // Found a valid position. Now find a valid starting direction.
+            let start_idx = (random_float(rng) * directions.len() as f32) as usize;
+            for i in 0..directions.len() {
+                let dir = directions[(start_idx + i) % directions.len()];
+                if !grid_movement::is_wall(pos + dir, map_data) {
+                    return (pos, dir);
+                }
+            }
+            // If all directions are blocked, we'll loop and find a new spawn point.
+        }
+    }
+}
+</enemy.rs>
+
 <game.rs>
 use bevy::prelude::*;
 
@@ -427,6 +754,8 @@ use crate::collate_src;
 use crate::collider;
 use crate::components;
 use crate::debug;
+use crate::diagnostics;
+use crate::enemy;
 use crate::grid_movement;
 use crate::grid_reservation;
 use crate::map;
@@ -464,6 +793,8 @@ impl Plugin for GamePlugin {
             projectile::ProjectilePlugin,
             border::BorderPlugin,
             grid_reservation::GridReservationPlugin,
+            enemy::EnemyPlugin,
+            diagnostics::DiagnosticsPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }
@@ -904,7 +1235,7 @@ fn sync_reservation_visuals(
                 GameEntity,
                 // The transform will be set correctly by the update_visualizer_positions system.
                 // A high Z-value ensures it renders on top of the floor and player.
-                Transform::from_xyz(0.0, 0.0, 2.0),
+                Transform::from_xyz(0.0, 0.0, 1.5),
             ));
         }
     }
@@ -976,6 +1307,8 @@ pub mod collider;
 pub mod components;
 pub mod custom_window;
 pub mod debug;
+pub mod diagnostics;
+pub mod enemy;
 pub mod game;
 pub mod grid_movement;
 pub mod grid_reservation;
@@ -1113,7 +1446,7 @@ impl Plugin for PlayerPlugin {
 pub struct Player;
 
 /// The base speed multiplier for player and projectile movement.
-const DEFAULT_PLAYER_SPEED: f32 = 50.0;
+pub const DEFAULT_PLAYER_SPEED: f32 = 50.0;
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
 const BUFFER_TILES: Vec2 = Vec2::new(4.0, 4.0);

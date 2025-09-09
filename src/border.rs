@@ -27,13 +27,15 @@ impl Plugin for BorderPlugin {
 }
 
 fn spawn_borders(mut commands: Commands) {
+    let z_pos: f32 = 2.;
+
     commands.spawn((
         Sprite {
             color: Color::srgb(0.1, 0.1, 0.1),
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Left,
         GameEntity,
     ));
@@ -43,7 +45,7 @@ fn spawn_borders(mut commands: Commands) {
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Right,
         GameEntity,
     ));
@@ -53,7 +55,7 @@ fn spawn_borders(mut commands: Commands) {
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Top,
         GameEntity,
     ));
@@ -63,7 +65,7 @@ fn spawn_borders(mut commands: Commands) {
             custom_size: Some(Vec2::ZERO),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 1.0001),
+        Transform::from_xyz(0.0, 0.0, z_pos),
         BorderSide::Bottom,
         GameEntity,
     ));

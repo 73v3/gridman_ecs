@@ -47,7 +47,7 @@ impl Plugin for PlayerPlugin {
 pub struct Player;
 
 /// The base speed multiplier for player and projectile movement.
-const DEFAULT_PLAYER_SPEED: f32 = 50.0;
+pub const DEFAULT_PLAYER_SPEED: f32 = 50.0;
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
 const BUFFER_TILES: Vec2 = Vec2::new(4.0, 4.0);

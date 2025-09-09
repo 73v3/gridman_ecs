@@ -83,7 +83,7 @@ fn sync_reservation_visuals(
                 GameEntity,
                 // The transform will be set correctly by the update_visualizer_positions system.
                 // A high Z-value ensures it renders on top of the floor and player.
-                Transform::from_xyz(0.0, 0.0, 2.0),
+                Transform::from_xyz(0.0, 0.0, 1.5),
             ));
         }
     }
