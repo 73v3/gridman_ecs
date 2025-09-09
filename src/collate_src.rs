@@ -29,7 +29,7 @@ We are using Bevy 0.16.1, so avoid all deprecated APIs or fields (e.g., use .del
 
 Before writing any code, think step-by-step through your design strategy out loud: outline the problem requirements, brainstorm multiple architectural options (e.g., different component/system/query designs), evaluate their trade-offs in terms of performance, simplicity, and extensibility, and justify your selection of the optimal approach.
 
-If needed, use the code_execution tool to test small prototypes or verify Bevy-specific behaviors during your reasoning phase.
+If applicable, use the code_execution tool to prototype or verify non-Bevy-specific logic (e.g., file I/O, string manipulation) during your reasoning phase. Focus on edge cases or complex logic that benefits from isolated testing, but avoid attempting to execute Bevy-specific ECS or rendering functionality.
 
 Professionally comment all new code and retain all existing comments.
 
@@ -81,6 +81,9 @@ fn collate_source_files(prompt: Res<CustomPrompt>) {
     }
 
     // Append the custom prompt
+    writeln!(output_file, "<task>").expect("Failed to write prompt opening task tag");
+    writeln!(output_file, "** WRITE YOUR TASK HERE ** ").expect("Failed to write instructions tag");
+    writeln!(output_file, "</task>").expect("Failed to write closing task tag");
     writeln!(output_file, "<task rules>").expect("Failed to write prompt opening tag");
     write!(output_file, "{}", prompt.0).expect("Failed to write prompt contents");
     writeln!(output_file, "\n</task rules>").expect("Failed to write prompt closing tag");
