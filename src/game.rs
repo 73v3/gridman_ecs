@@ -9,6 +9,7 @@ use crate::components;
 use crate::debug;
 use crate::diagnostics;
 use crate::enemy;
+use crate::explosion;
 use crate::grid_movement;
 use crate::grid_reservation;
 use crate::map;
@@ -48,6 +49,7 @@ impl Plugin for GamePlugin {
             grid_reservation::GridReservationPlugin,
             enemy::EnemyPlugin,
             diagnostics::DiagnosticsPlugin,
+            explosion::ExplosionPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }

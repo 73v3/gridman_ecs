@@ -12,6 +12,7 @@ pub mod custom_window;
 pub mod debug;
 pub mod diagnostics;
 pub mod enemy;
+pub mod explosion;
 pub mod game;
 pub mod grid_movement;
 pub mod grid_reservation;

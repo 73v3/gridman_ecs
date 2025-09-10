@@ -168,6 +168,7 @@ fn handle_player_input(
 /// or aiming at a wall.
 fn handle_shoot(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
     mut rng: GlobalEntropy<WyRand>,
     game_assets: Res<GameAssets>,
@@ -175,7 +176,7 @@ fn handle_shoot(
     map_data: Res<MapData>,
 ) {
     // Check for the shoot button press.
-    if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(KeyCode::Space) || mouse.just_pressed(MouseButton::Left) {
         if let Ok((mover, intended)) = query.single() {
             // Only shoot if the player has a direction.
             if intended.0 != IVec2::ZERO {
@@ -199,7 +200,7 @@ fn handle_shoot(
                     Projectile,
                     GridMover {
                         grid_pos: spawn_pos,
-                        direction: IVec2::ZERO, // Initially stationary, will move on next frame.
+                        direction: dir,
                         progress: 0.0,
                         speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
                     },

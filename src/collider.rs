@@ -1,21 +1,39 @@
 // collider.rs
-use crate::components::GameState;
+use crate::components::{EnemyDied, GameState, PlayerDied};
+use crate::enemy::Enemy;
 use crate::grid_movement::GridMover;
 use crate::grid_reservation::GridReservations;
 use crate::player::Player;
 use crate::projectile::{Bouncable, Projectile};
 use bevy::prelude::*;
 
+/// Component representing a collider with a size for AABB collision detection.
 #[derive(Component)]
 pub struct Collider {
     pub size: Vec2,
 }
 
+/// Event triggered when a projectile collides with another entity.
 #[derive(Event)]
 pub struct ProjectileCollision {
     pub projectile: Entity,
     pub victim: Entity,
 }
+
+/// The eight adjacent directions (cardinal and diagonal) for adjacency checks.
+const DIRECTIONS: [IVec2; 8] = [
+    IVec2::new(0, 1),   // Up
+    IVec2::new(0, -1),  // Down
+    IVec2::new(-1, 0),  // Left
+    IVec2::new(1, 0),   // Right
+    IVec2::new(-1, 1),  // Up-Left
+    IVec2::new(1, 1),   // Up-Right
+    IVec2::new(-1, -1), // Down-Left
+    IVec2::new(1, -1),  // Down-Right
+];
+
+/// Expansion factor for player and enemy colliders during AABB checks.
+const COLLIDER_EXPANSION_FACTOR: f32 = 2.25;
 
 pub struct ColliderPlugin;
 
@@ -23,12 +41,17 @@ impl Plugin for ColliderPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<ProjectileCollision>().add_systems(
             Update,
-            check_projectile_collisions.run_if(in_state(GameState::Playing)),
+            (
+                check_projectile_collisions,
+                check_player_enemy_adjacency
+                    .after(crate::grid_movement::MovementSystems::UpdateMover),
+            )
+                .run_if(in_state(GameState::Playing)),
         );
     }
 }
 
-/// Checks for collisions by leveraging the grid reservation system.
+/// Checks for collisions between projectiles and other entities using the grid reservation system.
 /// This is a highly efficient, targeted collision detection method.
 fn check_projectile_collisions(
     mut events: EventWriter<ProjectileCollision>,
@@ -72,6 +95,52 @@ fn check_projectile_collisions(
                         projectile: proj_entity,
                         victim: victim_entity,
                     });
+                }
+            }
+        }
+    }
+}
+
+/// Checks for AABB overlap between the player and enemies in adjacent grid cells with expanded collider sizes.
+/// Triggers player and enemy death if an overlap is detected.
+fn check_player_enemy_adjacency(
+    mut commands: Commands,
+    mut player_died_events: EventWriter<PlayerDied>,
+    mut enemy_died_events: EventWriter<EnemyDied>,
+    player_query: Query<(Entity, &GridMover, &Transform, &Collider), With<Player>>,
+    enemy_query: Query<(Entity, &Transform, &Collider), With<Enemy>>,
+    reservations: Res<GridReservations>,
+) {
+    if let Ok((player_entity, player_mover, player_transform, player_collider)) =
+        player_query.single()
+    {
+        // Check each adjacent cell using the constant DIRECTIONS array.
+        for &dir in DIRECTIONS.iter() {
+            let adjacent_pos = player_mover.grid_pos + dir;
+            if let Some(&enemy_entity) = reservations.0.get(&adjacent_pos) {
+                // Confirm the entity is an enemy.
+                if let Ok((enemy_entity, enemy_transform, enemy_collider)) =
+                    enemy_query.get(enemy_entity)
+                {
+                    // Perform AABB overlap check with expanded collider sizes.
+                    if aabb_overlap(
+                        player_transform.translation.xy(),
+                        player_collider.size * COLLIDER_EXPANSION_FACTOR,
+                        enemy_transform.translation.xy(),
+                        enemy_collider.size * COLLIDER_EXPANSION_FACTOR,
+                    ) {
+                        // Collision detected; despawn both and trigger death events.
+                        commands.entity(player_entity).despawn();
+                        commands.entity(enemy_entity).despawn();
+                        player_died_events.write(PlayerDied(player_transform.translation));
+                        enemy_died_events.write(EnemyDied(enemy_transform.translation));
+                        info!(
+                            "Player died due to AABB overlap with enemy at {:?}",
+                            adjacent_pos
+                        );
+                        // Break after first collision to avoid multiple death events in one frame.
+                        break;
+                    }
                 }
             }
         }

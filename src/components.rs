@@ -9,9 +9,6 @@ pub enum GameState {
 }
 
 #[derive(Component)]
-pub struct Dead;
-
-#[derive(Component)]
 pub struct GameEntity;
 
 #[derive(Component)]
@@ -25,7 +22,10 @@ pub struct Speed {
 }
 
 #[derive(Event)]
-pub struct PlayerDied;
+pub struct PlayerDied(pub Vec3);
+
+#[derive(Event)]
+pub struct EnemyDied(pub Vec3);
 
 #[derive(Resource)]
 pub struct GameSpeed {
@@ -36,8 +36,9 @@ pub struct ComponentsPlugin;
 
 impl Plugin for ComponentsPlugin {
     fn build(&self, app: &mut App) {
-        // Register the PlayerDied event here.
+        // Register the PlayerDied and EnemyDied events here.
         app.add_event::<PlayerDied>()
+            .add_event::<EnemyDied>()
             .insert_resource(GameSpeed { value: 1.0 })
             .add_systems(
                 Update,

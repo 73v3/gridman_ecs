@@ -23,8 +23,10 @@ pub struct GameAssets {
     pub player_texture: Handle<Image>,
     pub reservation_texture: Handle<Image>,
     pub enemy_texture: Handle<Image>,
+    pub explosion_texture: Handle<Image>,
     pub font: Handle<Font>,
     pub shoot_sfx: Handle<AudioSource>,
+    pub explosion_sfx: Handle<AudioSource>,
     pub palette: Palette,
 }
 
@@ -87,8 +89,10 @@ fn load_assets(
         player_texture: asset_server.load("textures/player.png"),
         reservation_texture: asset_server.load("textures/reservation.png"),
         enemy_texture: asset_server.load("textures/enemy.png"),
+        explosion_texture: asset_server.load("textures/explosion.png"),
         font: asset_server.load("fonts/press_start_2p/PressStart2P-Regular.ttf"),
         shoot_sfx: asset_server.load("sfx/shoot.wav"),
+        explosion_sfx: asset_server.load("sfx/explosion.wav"),
         palette,
     });
     next_state.set(GameState::Title);
@@ -145,16 +149,19 @@ pub struct BorderPlugin;
 
 impl Plugin for BorderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), spawn_borders) //, update_borders))
-            .add_systems(
-                Update,
-                update_borders
-                    .run_if(in_state(GameState::Playing).and(resource_changed::<Resolution>)),
-            );
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            (spawn_borders, update_borders).chain(), // Chain update_borders after spawn_borders
+        )
+        .add_systems(
+            Update,
+            update_borders.run_if(in_state(GameState::Playing).and(resource_changed::<Resolution>)),
+        );
     }
 }
 
 fn spawn_borders(mut commands: Commands) {
+    info!("Spawning borders for new game");
     let z_pos: f32 = 2.;
 
     commands.spawn((
@@ -205,9 +212,11 @@ fn update_borders(
     mut borders: Query<(&BorderSide, &mut Transform, &mut Sprite)>,
 ) {
     let Ok(_window) = windows.single() else {
+        warn!("No primary window found in update_borders");
         return;
     };
     let Ok((camera, global_transform)) = cameras.single() else {
+        warn!("No 2D camera found in update_borders");
         return;
     };
 
@@ -271,23 +280,41 @@ fn update_borders(
 
 <collider.rs>
 // collider.rs
-use crate::components::GameState;
+use crate::components::{EnemyDied, GameState, PlayerDied};
+use crate::enemy::Enemy;
 use crate::grid_movement::GridMover;
 use crate::grid_reservation::GridReservations;
 use crate::player::Player;
 use crate::projectile::{Bouncable, Projectile};
 use bevy::prelude::*;
 
+/// Component representing a collider with a size for AABB collision detection.
 #[derive(Component)]
 pub struct Collider {
     pub size: Vec2,
 }
 
+/// Event triggered when a projectile collides with another entity.
 #[derive(Event)]
 pub struct ProjectileCollision {
     pub projectile: Entity,
     pub victim: Entity,
 }
+
+/// The eight adjacent directions (cardinal and diagonal) for adjacency checks.
+const DIRECTIONS: [IVec2; 8] = [
+    IVec2::new(0, 1),   // Up
+    IVec2::new(0, -1),  // Down
+    IVec2::new(-1, 0),  // Left
+    IVec2::new(1, 0),   // Right
+    IVec2::new(-1, 1),  // Up-Left
+    IVec2::new(1, 1),   // Up-Right
+    IVec2::new(-1, -1), // Down-Left
+    IVec2::new(1, -1),  // Down-Right
+];
+
+/// Expansion factor for player and enemy colliders during AABB checks.
+const COLLIDER_EXPANSION_FACTOR: f32 = 2.25;
 
 pub struct ColliderPlugin;
 
@@ -295,12 +322,17 @@ impl Plugin for ColliderPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<ProjectileCollision>().add_systems(
             Update,
-            check_projectile_collisions.run_if(in_state(GameState::Playing)),
+            (
+                check_projectile_collisions,
+                check_player_enemy_adjacency
+                    .after(crate::grid_movement::MovementSystems::UpdateMover),
+            )
+                .run_if(in_state(GameState::Playing)),
         );
     }
 }
 
-/// Checks for collisions by leveraging the grid reservation system.
+/// Checks for collisions between projectiles and other entities using the grid reservation system.
 /// This is a highly efficient, targeted collision detection method.
 fn check_projectile_collisions(
     mut events: EventWriter<ProjectileCollision>,
@@ -350,6 +382,52 @@ fn check_projectile_collisions(
     }
 }
 
+/// Checks for AABB overlap between the player and enemies in adjacent grid cells with expanded collider sizes.
+/// Triggers player and enemy death if an overlap is detected.
+fn check_player_enemy_adjacency(
+    mut commands: Commands,
+    mut player_died_events: EventWriter<PlayerDied>,
+    mut enemy_died_events: EventWriter<EnemyDied>,
+    player_query: Query<(Entity, &GridMover, &Transform, &Collider), With<Player>>,
+    enemy_query: Query<(Entity, &Transform, &Collider), With<Enemy>>,
+    reservations: Res<GridReservations>,
+) {
+    if let Ok((player_entity, player_mover, player_transform, player_collider)) =
+        player_query.single()
+    {
+        // Check each adjacent cell using the constant DIRECTIONS array.
+        for &dir in DIRECTIONS.iter() {
+            let adjacent_pos = player_mover.grid_pos + dir;
+            if let Some(&enemy_entity) = reservations.0.get(&adjacent_pos) {
+                // Confirm the entity is an enemy.
+                if let Ok((enemy_entity, enemy_transform, enemy_collider)) =
+                    enemy_query.get(enemy_entity)
+                {
+                    // Perform AABB overlap check with expanded collider sizes.
+                    if aabb_overlap(
+                        player_transform.translation.xy(),
+                        player_collider.size * COLLIDER_EXPANSION_FACTOR,
+                        enemy_transform.translation.xy(),
+                        enemy_collider.size * COLLIDER_EXPANSION_FACTOR,
+                    ) {
+                        // Collision detected; despawn both and trigger death events.
+                        commands.entity(player_entity).despawn();
+                        commands.entity(enemy_entity).despawn();
+                        player_died_events.write(PlayerDied(player_transform.translation));
+                        enemy_died_events.write(EnemyDied(enemy_transform.translation));
+                        info!(
+                            "Player died due to AABB overlap with enemy at {:?}",
+                            adjacent_pos
+                        );
+                        // Break after first collision to avoid multiple death events in one frame.
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Checks for overlap between two Axis-Aligned Bounding Boxes.
 pub fn aabb_overlap(pos1: Vec2, size1: Vec2, pos2: Vec2, size2: Vec2) -> bool {
     let half1 = size1 / 2.0;
@@ -375,9 +453,6 @@ pub enum GameState {
 }
 
 #[derive(Component)]
-pub struct Dead;
-
-#[derive(Component)]
 pub struct GameEntity;
 
 #[derive(Component)]
@@ -391,7 +466,10 @@ pub struct Speed {
 }
 
 #[derive(Event)]
-pub struct PlayerDied;
+pub struct PlayerDied(pub Vec3);
+
+#[derive(Event)]
+pub struct EnemyDied(pub Vec3);
 
 #[derive(Resource)]
 pub struct GameSpeed {
@@ -402,8 +480,9 @@ pub struct ComponentsPlugin;
 
 impl Plugin for ComponentsPlugin {
     fn build(&self, app: &mut App) {
-        // Register the PlayerDied event here.
+        // Register the PlayerDied and EnemyDied events here.
         app.add_event::<PlayerDied>()
+            .add_event::<EnemyDied>()
             .insert_resource(GameSpeed { value: 1.0 })
             .add_systems(
                 Update,
@@ -875,6 +954,141 @@ fn find_valid_spawn(
 }
 </enemy.rs>
 
+<explosion.rs>
+use crate::assets::GameAssets;
+use crate::audio;
+use crate::components::{EnemyDied, GameEntity, GameSpeed, GameState, PlayerDied};
+use crate::random::{random_colour, random_float};
+use bevy::prelude::*;
+use bevy_rand::prelude::{GlobalEntropy, WyRand};
+
+pub struct ExplosionPlugin;
+
+impl Plugin for ExplosionPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (
+                spawn_enemy_explosions,
+                spawn_player_explosions,
+                update_explosions,
+                check_player_explosions,
+            )
+                .chain()
+                .run_if(in_state(GameState::Playing)),
+        );
+    }
+}
+
+#[derive(Component)]
+pub struct Explosion {
+    pub timer: f32,
+}
+
+#[derive(Component)]
+pub struct PlayerExplosion;
+
+#[derive(Resource)]
+pub struct PlayerIsDead;
+
+const EXPLOSION_LIFETIME: f32 = 0.375;
+
+// spawns an explosion at the position of any enemy that has just died
+fn spawn_enemy_explosions(
+    mut commands: Commands,
+    mut dead_events: EventReader<EnemyDied>,
+    game_assets: Res<GameAssets>,
+    mut rng: GlobalEntropy<WyRand>,
+) {
+    for EnemyDied(pos) in dead_events.read() {
+        audio::play_with_volume(&mut commands, game_assets.explosion_sfx.clone(), 0.3);
+        commands.spawn((
+            Sprite {
+                image: game_assets.explosion_texture.clone(),
+                color: random_colour(&mut rng, &game_assets),
+                ..Default::default()
+            },
+            Transform::from_translation(*pos),
+            Explosion { timer: 0.0 },
+            GameEntity,
+        ));
+    }
+}
+
+const NUM_PLAYER_EXPLOSIONS: i32 = 16;
+
+// spawns multiple explosions at player's location
+fn spawn_player_explosions(
+    mut commands: Commands,
+    mut player_died_events: EventReader<PlayerDied>,
+    game_assets: Res<GameAssets>,
+    mut rng: GlobalEntropy<WyRand>,
+) {
+    for PlayerDied(pos) in player_died_events.read() {
+        info!("player died");
+        audio::play_with_volume(&mut commands, game_assets.explosion_sfx.clone(), 0.5);
+        for _ in 0..NUM_PLAYER_EXPLOSIONS {
+            let offset_x = (random_float(&mut rng) - 0.5) * 20.0;
+            let offset_y = (random_float(&mut rng) - 0.5) * 20.0;
+            commands.spawn((
+                Sprite {
+                    image: game_assets.explosion_texture.clone(),
+                    color: random_colour(&mut rng, &game_assets),
+                    ..Default::default()
+                },
+                Transform::from_translation(*pos + Vec3::new(offset_x, offset_y, 0.)),
+                Explosion {
+                    timer: -2. * random_float(&mut rng), // stagger the explosion dissipation over time
+                },
+                PlayerExplosion,
+                GameEntity,
+            ));
+        }
+        commands.insert_resource(PlayerIsDead);
+    }
+}
+
+// fades out explosions over time, despawning when done
+fn update_explosions(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Explosion, &mut Sprite)>,
+    time: Res<Time>,
+) {
+    for (entity, mut explosion, mut sprite) in query.iter_mut() {
+        explosion.timer += time.delta_secs();
+        if explosion.timer > EXPLOSION_LIFETIME {
+            commands.entity(entity).despawn();
+        } else {
+            let alpha = if explosion.timer < EXPLOSION_LIFETIME / 2.0 {
+                1.0
+            } else {
+                1.0 - (explosion.timer - EXPLOSION_LIFETIME / 2.0) / (EXPLOSION_LIFETIME / 2.0)
+            };
+            sprite.color = sprite.color.with_alpha(alpha);
+        }
+    }
+}
+
+// checks if the player is dead and player explosions have finished,
+// in which case, return to title screen
+fn check_player_explosions(
+    mut commands: Commands,
+    option_dead: Option<Res<PlayerIsDead>>,
+    player_explosion_query: Query<Entity, With<PlayerExplosion>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut game_speed: ResMut<GameSpeed>,
+) {
+    if let Some(_) = option_dead {
+        if player_explosion_query.is_empty() {
+            next_state.set(GameState::Title);
+            game_speed.value = 1.0;
+            commands.remove_resource::<PlayerIsDead>();
+            info!("player dead::switching to title");
+        }
+    }
+}
+</explosion.rs>
+
 <game.rs>
 use bevy::prelude::*;
 
@@ -887,6 +1101,7 @@ use crate::components;
 use crate::debug;
 use crate::diagnostics;
 use crate::enemy;
+use crate::explosion;
 use crate::grid_movement;
 use crate::grid_reservation;
 use crate::map;
@@ -926,6 +1141,7 @@ impl Plugin for GamePlugin {
             grid_reservation::GridReservationPlugin,
             enemy::EnemyPlugin,
             diagnostics::DiagnosticsPlugin,
+            explosion::ExplosionPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }
@@ -1440,6 +1656,7 @@ pub mod custom_window;
 pub mod debug;
 pub mod diagnostics;
 pub mod enemy;
+pub mod explosion;
 pub mod game;
 pub mod grid_movement;
 pub mod grid_reservation;
@@ -1698,6 +1915,7 @@ fn handle_player_input(
 /// or aiming at a wall.
 fn handle_shoot(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
     mut rng: GlobalEntropy<WyRand>,
     game_assets: Res<GameAssets>,
@@ -1705,7 +1923,7 @@ fn handle_shoot(
     map_data: Res<MapData>,
 ) {
     // Check for the shoot button press.
-    if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(KeyCode::Space) || mouse.just_pressed(MouseButton::Left) {
         if let Ok((mover, intended)) = query.single() {
             // Only shoot if the player has a direction.
             if intended.0 != IVec2::ZERO {
@@ -1729,7 +1947,7 @@ fn handle_shoot(
                     Projectile,
                     GridMover {
                         grid_pos: spawn_pos,
-                        direction: IVec2::ZERO, // Initially stationary, will move on next frame.
+                        direction: dir,
                         progress: 0.0,
                         speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
                     },
@@ -1826,7 +2044,7 @@ fn smooth_adjust_scroll(
 
 <projectile.rs>
 use crate::collider::ProjectileCollision;
-use crate::components::{GameState, PlayerDied};
+use crate::components::{EnemyDied, GameState, PlayerDied};
 use crate::enemy::Enemy;
 use crate::player::Player;
 use crate::score::ScoreChanged;
@@ -1858,30 +2076,26 @@ fn handle_projectile_collisions(
     mut collision_events: EventReader<ProjectileCollision>,
     mut score_events: EventWriter<ScoreChanged>,
     mut player_died_events: EventWriter<PlayerDied>,
+    mut enemy_died_events: EventWriter<EnemyDied>,
     // Query to determine if the victim was a Player or an Enemy.
-    victim_query: Query<(Has<Player>, Has<Enemy>)>,
+    victim_query: Query<(Has<Player>, Has<Enemy>, &Transform)>,
 ) {
     for event in collision_events.read() {
         // Despawn the projectile on any confirmed collision.
-        // commands.get_entity() returns a Result, so we use `if let Ok`.
-        if let Ok(mut entity_commands) = commands.get_entity(event.projectile) {
-            entity_commands.despawn();
-        }
+        commands.entity(event.projectile).despawn();
 
         // Check what the victim was and react accordingly.
-        if let Ok((is_player, is_enemy)) = victim_query.get(event.victim) {
+        if let Ok((is_player, is_enemy, transform)) = victim_query.get(event.victim) {
+            let pos = transform.translation;
             if is_player {
-                if let Ok(mut entity_commands) = commands.get_entity(event.victim) {
-                    entity_commands.despawn();
-                }
-                // Use .write() to send events, as .send() is deprecated.
-                player_died_events.write(PlayerDied);
+                commands.entity(event.victim).despawn();
+
+                player_died_events.write(PlayerDied(pos));
                 info!("Player was hit by a projectile!");
             } else if is_enemy {
-                if let Ok(mut entity_commands) = commands.get_entity(event.victim) {
-                    entity_commands.despawn();
-                }
-                // Use .write() to send events.
+                commands.entity(event.victim).despawn();
+
+                enemy_died_events.write(EnemyDied(pos));
                 score_events.write(ScoreChanged);
             }
         }
@@ -2421,13 +2635,15 @@ fn despawn_title(mut commands: Commands, query: Query<Entity, With<TitleText>>) 
 fn handle_title_input(
     mut next_state: ResMut<NextState<GameState>>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
 ) {
-    if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(KeyCode::Space) || mouse.just_pressed(MouseButton::Left) {
         next_state.set(GameState::Playing);
     }
 }
 
 fn cleanup_game(mut commands: Commands, query: Query<Entity, With<GameEntity>>) {
+    info!("Cleaning up game entities");
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
@@ -2477,9 +2693,6 @@ fn update_ui_scale_on_resize(
 }
 </ui_scaling.rs>
 
-<task>
-** WRITE YOUR TASK HERE ** 
-</task>
 <task rules>
 As usual, we require an ECS-first, performant, and elegant solution that perfectly solves our problem while adhering to Bevy's best practices for modularity, efficiency, and maintainability.
 
@@ -2491,7 +2704,10 @@ If applicable, use the code_execution tool to prototype or verify non-Bevy-speci
 
 Professionally comment all new code and retain all existing comments.
 
-Output all changed or new files in full, each in its own dedicated code block with the file name as the header. Do not output unchanged files or partial diffs—provide complete, compilable files.
+Output all changed or new files in full, each in its own dedicated codebox. Do not output unchanged files or partial diffs—provide complete, compilable files.
 
-After outputting all files, provide a concise summary (outside of code blocks) that recaps the key changes, evaluates their merits (e.g., how they improve performance, readability, or solve edge cases), and suggests any potential future improvements.
+After outputting all files, provide a concise summary (outside of codeboxes) that recaps the key changes, evaluates their merits (e.g., how they improve performance, readability, or solve edge cases), and suggests any potential future improvements.
 </task rules>
+<task>
+ 
+</task>

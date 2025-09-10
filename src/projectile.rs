@@ -1,5 +1,5 @@
 use crate::collider::ProjectileCollision;
-use crate::components::{GameState, PlayerDied};
+use crate::components::{EnemyDied, GameState, PlayerDied};
 use crate::enemy::Enemy;
 use crate::player::Player;
 use crate::score::ScoreChanged;
@@ -31,30 +31,26 @@ fn handle_projectile_collisions(
     mut collision_events: EventReader<ProjectileCollision>,
     mut score_events: EventWriter<ScoreChanged>,
     mut player_died_events: EventWriter<PlayerDied>,
+    mut enemy_died_events: EventWriter<EnemyDied>,
     // Query to determine if the victim was a Player or an Enemy.
-    victim_query: Query<(Has<Player>, Has<Enemy>)>,
+    victim_query: Query<(Has<Player>, Has<Enemy>, &Transform)>,
 ) {
     for event in collision_events.read() {
         // Despawn the projectile on any confirmed collision.
-        // commands.get_entity() returns a Result, so we use `if let Ok`.
-        if let Ok(mut entity_commands) = commands.get_entity(event.projectile) {
-            entity_commands.despawn();
-        }
+        commands.entity(event.projectile).despawn();
 
         // Check what the victim was and react accordingly.
-        if let Ok((is_player, is_enemy)) = victim_query.get(event.victim) {
+        if let Ok((is_player, is_enemy, transform)) = victim_query.get(event.victim) {
+            let pos = transform.translation;
             if is_player {
-                if let Ok(mut entity_commands) = commands.get_entity(event.victim) {
-                    entity_commands.despawn();
-                }
-                // Use .write() to send events, as .send() is deprecated.
-                player_died_events.write(PlayerDied);
+                commands.entity(event.victim).despawn();
+
+                player_died_events.write(PlayerDied(pos));
                 info!("Player was hit by a projectile!");
             } else if is_enemy {
-                if let Ok(mut entity_commands) = commands.get_entity(event.victim) {
-                    entity_commands.despawn();
-                }
-                // Use .write() to send events.
+                commands.entity(event.victim).despawn();
+
+                enemy_died_events.write(EnemyDied(pos));
                 score_events.write(ScoreChanged);
             }
         }

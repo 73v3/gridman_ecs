@@ -22,8 +22,10 @@ pub struct GameAssets {
     pub player_texture: Handle<Image>,
     pub reservation_texture: Handle<Image>,
     pub enemy_texture: Handle<Image>,
+    pub explosion_texture: Handle<Image>,
     pub font: Handle<Font>,
     pub shoot_sfx: Handle<AudioSource>,
+    pub explosion_sfx: Handle<AudioSource>,
     pub palette: Palette,
 }
 
@@ -86,8 +88,10 @@ fn load_assets(
         player_texture: asset_server.load("textures/player.png"),
         reservation_texture: asset_server.load("textures/reservation.png"),
         enemy_texture: asset_server.load("textures/enemy.png"),
+        explosion_texture: asset_server.load("textures/explosion.png"),
         font: asset_server.load("fonts/press_start_2p/PressStart2P-Regular.ttf"),
         shoot_sfx: asset_server.load("sfx/shoot.wav"),
+        explosion_sfx: asset_server.load("sfx/explosion.wav"),
         palette,
     });
     next_state.set(GameState::Title);

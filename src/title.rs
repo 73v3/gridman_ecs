@@ -91,13 +91,15 @@ fn despawn_title(mut commands: Commands, query: Query<Entity, With<TitleText>>) 
 fn handle_title_input(
     mut next_state: ResMut<NextState<GameState>>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
 ) {
-    if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(KeyCode::Space) || mouse.just_pressed(MouseButton::Left) {
         next_state.set(GameState::Playing);
     }
 }
 
 fn cleanup_game(mut commands: Commands, query: Query<Entity, With<GameEntity>>) {
+    info!("Cleaning up game entities");
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }

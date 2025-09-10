@@ -33,9 +33,9 @@ If applicable, use the code_execution tool to prototype or verify non-Bevy-speci
 
 Professionally comment all new code and retain all existing comments.
 
-Output all changed or new files in full, each in its own dedicated code block with the file name as the header. Do not output unchanged files or partial diffs—provide complete, compilable files.
+Output all changed or new files in full, each in its own dedicated codebox. Do not output unchanged files or partial diffs—provide complete, compilable files.
 
-After outputting all files, provide a concise summary (outside of code blocks) that recaps the key changes, evaluates their merits (e.g., how they improve performance, readability, or solve edge cases), and suggests any potential future improvements.
+After outputting all files, provide a concise summary (outside of codeboxes) that recaps the key changes, evaluates their merits (e.g., how they improve performance, readability, or solve edge cases), and suggests any potential future improvements.
             "#.trim().to_string(),
         )
     }
@@ -81,10 +81,10 @@ fn collate_source_files(prompt: Res<CustomPrompt>) {
     }
 
     // Append the custom prompt
-    writeln!(output_file, "<task>").expect("Failed to write prompt opening task tag");
-    writeln!(output_file, "** WRITE YOUR TASK HERE ** ").expect("Failed to write instructions tag");
-    writeln!(output_file, "</task>").expect("Failed to write closing task tag");
     writeln!(output_file, "<task rules>").expect("Failed to write prompt opening tag");
     write!(output_file, "{}", prompt.0).expect("Failed to write prompt contents");
     writeln!(output_file, "\n</task rules>").expect("Failed to write prompt closing tag");
+    writeln!(output_file, "<task>").expect("Failed to write prompt opening task tag");
+    writeln!(output_file, " ").expect("Failed to write instructions tag");
+    writeln!(output_file, "</task>").expect("Failed to write closing task tag");
 }

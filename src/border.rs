@@ -17,16 +17,19 @@ pub struct BorderPlugin;
 
 impl Plugin for BorderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), spawn_borders) //, update_borders))
-            .add_systems(
-                Update,
-                update_borders
-                    .run_if(in_state(GameState::Playing).and(resource_changed::<Resolution>)),
-            );
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            (spawn_borders, update_borders).chain(), // Chain update_borders after spawn_borders
+        )
+        .add_systems(
+            Update,
+            update_borders.run_if(in_state(GameState::Playing).and(resource_changed::<Resolution>)),
+        );
     }
 }
 
 fn spawn_borders(mut commands: Commands) {
+    info!("Spawning borders for new game");
     let z_pos: f32 = 2.;
 
     commands.spawn((
@@ -77,9 +80,11 @@ fn update_borders(
     mut borders: Query<(&BorderSide, &mut Transform, &mut Sprite)>,
 ) {
     let Ok(_window) = windows.single() else {
+        warn!("No primary window found in update_borders");
         return;
     };
     let Ok((camera, global_transform)) = cameras.single() else {
+        warn!("No 2D camera found in update_borders");
         return;
     };
 
