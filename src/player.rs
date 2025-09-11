@@ -64,7 +64,7 @@ const BASE_TAU_SCALE: f32 = 1.0;
 /// This system runs once when entering the `GameState::Playing` state. It also
 /// calculates the initial map and tile offsets to center the camera on the
 /// newly spawned player.
-fn spawn_player(
+pub fn spawn_player(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,

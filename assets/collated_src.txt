@@ -670,7 +670,7 @@ use crate::components::{GameEntity, GameState};
 use crate::grid_movement::{self, GridMover, IntendedDirection, MovementSystems};
 use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::MapData;
-use crate::player::DEFAULT_PLAYER_SPEED;
+use crate::player::{spawn_player, Player, DEFAULT_PLAYER_SPEED};
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
@@ -685,7 +685,10 @@ pub struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Title), setup_enemy_colors)
-            .add_systems(OnEnter(GameState::Playing), spawn_enemies)
+            .add_systems(
+                OnEnter(GameState::Playing),
+                spawn_enemies.after(spawn_player),
+            )
             .configure_sets(
                 Update,
                 // The AI systems must run before the movement system to avoid a 1-frame delay.
@@ -756,7 +759,10 @@ fn spawn_enemies(
     map_data: Res<MapData>,
     mut reservations: ResMut<GridReservations>,
     enemy_colors: Res<EnemyColors>,
+    player_query: Query<&GridMover, With<Player>>,
 ) {
+    let player_pos = player_query.single().unwrap().grid_pos;
+    info!("Spawning enemies, player position: {:?}", player_pos);
     let valid_directions = [
         IVec2::new(0, 1),
         IVec2::new(0, -1),
@@ -766,8 +772,13 @@ fn spawn_enemies(
 
     // Spawn LeftTurners
     for _ in 0..NUM_LEFT_TURNERS {
-        let (spawn_pos, start_dir) =
-            find_valid_spawn(&mut rng, &map_data, &reservations, &valid_directions);
+        let (spawn_pos, start_dir) = find_valid_spawn(
+            &mut rng,
+            &map_data,
+            &reservations,
+            &valid_directions,
+            player_pos,
+        );
 
         let entity = commands
             .spawn((
@@ -800,8 +811,13 @@ fn spawn_enemies(
 
     // Spawn RightTurners
     for _ in 0..NUM_RIGHT_TURNERS {
-        let (spawn_pos, start_dir) =
-            find_valid_spawn(&mut rng, &map_data, &reservations, &valid_directions);
+        let (spawn_pos, start_dir) = find_valid_spawn(
+            &mut rng,
+            &map_data,
+            &reservations,
+            &valid_directions,
+            player_pos,
+        );
 
         let entity = commands
             .spawn((
@@ -924,22 +940,31 @@ fn is_blocked(
     false
 }
 
-/// Finds a random, non-wall, non-reserved grid cell to spawn an entity.
+/// Finds a random, non-wall, non-reserved grid cell to spawn an entity, ensuring it's at least 32 cells away from the player using Euclidean distance.
 fn find_valid_spawn(
     rng: &mut GlobalEntropy<WyRand>,
     map_data: &MapData,
     reservations: &GridReservations,
     directions: &[IVec2],
+    player_pos: IVec2,
 ) -> (IVec2, IVec2) {
     let width = map_data.width as i32;
     let height = map_data.height as i32;
+    const MIN_DIST_SQ: i64 = 32 * 32;
 
     loop {
         let x = (random_float(rng) * width as f32) as i32;
         let y = (random_float(rng) * height as f32) as i32;
         let pos = IVec2::new(x, y);
 
-        if !grid_movement::is_wall(pos, map_data) && !reservations.0.contains_key(&pos) {
+        let dx = (x - player_pos.x) as i64;
+        let dy = (y - player_pos.y) as i64;
+        let dist_sq = dx * dx + dy * dy;
+
+        if dist_sq >= MIN_DIST_SQ
+            && !grid_movement::is_wall(pos, map_data)
+            && !reservations.0.contains_key(&pos)
+        {
             // Found a valid position. Now find a valid starting direction.
             let start_idx = (random_float(rng) * directions.len() as f32) as usize;
             for i in 0..directions.len() {
@@ -1811,7 +1836,7 @@ const BASE_TAU_SCALE: f32 = 1.0;
 /// This system runs once when entering the `GameState::Playing` state. It also
 /// calculates the initial map and tile offsets to center the camera on the
 /// newly spawned player.
-fn spawn_player(
+pub fn spawn_player(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,
