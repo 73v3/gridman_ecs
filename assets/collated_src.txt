@@ -478,6 +478,9 @@ pub struct GameSpeed {
     pub value: f32,
 }
 
+#[derive(Resource)]
+pub struct EnemyGroupSize(pub u32);
+
 pub struct ComponentsPlugin;
 
 impl Plugin for ComponentsPlugin {
@@ -668,16 +671,13 @@ use bevy_rand::prelude::{GlobalEntropy, WyRand};
 
 use crate::assets::GameAssets;
 use crate::collider::Collider;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyGroupSize, GameEntity, GameState};
 use crate::grid_movement::{self, GridMover, IntendedDirection, MovementSystems};
 use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::MapData;
 use crate::player::{spawn_player, Player, DEFAULT_PLAYER_SPEED};
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
-
-const NUM_LEFT_TURNERS: u32 = 1;
-const NUM_RIGHT_TURNERS: u32 = NUM_LEFT_TURNERS;
 
 const DEFAULT_ENEMY_SPEED: f32 = 0.5 * DEFAULT_PLAYER_SPEED;
 
@@ -762,6 +762,7 @@ pub fn spawn_enemies(
     mut reservations: ResMut<GridReservations>,
     enemy_colors: Res<EnemyColors>,
     player_query: Query<&GridMover, With<Player>>,
+    enemy_group_size: Res<EnemyGroupSize>,
 ) {
     let player_pos = player_query.single().unwrap().grid_pos;
     info!("Spawning enemies, player position: {:?}", player_pos);
@@ -772,8 +773,11 @@ pub fn spawn_enemies(
         IVec2::new(-1, 0),
     ];
 
+    let num_left_turners = enemy_group_size.0;
+    let num_right_turners = num_left_turners;
+
     // Spawn LeftTurners
-    for _ in 0..NUM_LEFT_TURNERS {
+    for _ in 0..num_left_turners {
         let (spawn_pos, start_dir) = find_valid_spawn(
             &mut rng,
             &map_data,
@@ -812,7 +816,7 @@ pub fn spawn_enemies(
     }
 
     // Spawn RightTurners
-    for _ in 0..NUM_RIGHT_TURNERS {
+    for _ in 0..num_right_turners {
         let (spawn_pos, start_dir) = find_valid_spawn(
             &mut rng,
             &map_data,
@@ -2577,8 +2581,9 @@ fn update_tile_colors(
 </tilemap.rs>
 
 <title.rs>
+// title.rs
 use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyGroupSize, GameEntity, GameState};
 use bevy::prelude::*;
 use bevy::state::app::AppExtStates;
 
@@ -2587,7 +2592,11 @@ pub struct TitlePlugin;
 impl Plugin for TitlePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GameState>()
-            .add_systems(OnEnter(GameState::Title), (spawn_title, cleanup_game))
+            .insert_resource(EnemyGroupSize(1))
+            .add_systems(
+                OnEnter(GameState::Title),
+                (spawn_title, cleanup_game, reset_enemy_count),
+            )
             .add_systems(OnExit(GameState::Title), despawn_title)
             .add_systems(
                 Update,
@@ -2683,6 +2692,10 @@ fn cleanup_game(mut commands: Commands, query: Query<Entity, With<GameEntity>>) 
         commands.entity(entity).despawn();
     }
 }
+
+fn reset_enemy_count(mut enemy_group_size: ResMut<EnemyGroupSize>) {
+    enemy_group_size.0 = 1;
+}
 </title.rs>
 
 <ui_scaling.rs>
@@ -2733,7 +2746,7 @@ fn update_ui_scale_on_resize(
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyGroupSize, GameEntity, GameState};
 use crate::enemy::Enemy;
 use crate::player::Player;
 
@@ -2790,7 +2803,7 @@ fn spawn_victory(mut commands: Commands, game_assets: Res<GameAssets>) {
     });
 
     // Insert the timer resource
-    commands.insert_resource(VictoryTimer(Timer::from_seconds(10.0, TimerMode::Once)));
+    commands.insert_resource(VictoryTimer(Timer::from_seconds(5.0, TimerMode::Once)));
 }
 
 fn despawn_victory(mut commands: Commands, query: Query<Entity, With<VictoryText>>) {
@@ -2803,10 +2816,13 @@ fn handle_victory_timer(
     mut timer: ResMut<VictoryTimer>,
     time: Res<Time>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut enemy_group_size: ResMut<EnemyGroupSize>,
 ) {
     timer.0.tick(time.delta());
     if timer.0.finished() {
-        next_state.set(GameState::Title);
+        const MAX_PER_TYPE: u32 = 2048;
+        enemy_group_size.0 = (enemy_group_size.0 * 2).min(MAX_PER_TYPE);
+        next_state.set(GameState::Playing);
     }
 }
 

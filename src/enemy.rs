@@ -7,16 +7,13 @@ use bevy_rand::prelude::{GlobalEntropy, WyRand};
 
 use crate::assets::GameAssets;
 use crate::collider::Collider;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyGroupSize, GameEntity, GameState};
 use crate::grid_movement::{self, GridMover, IntendedDirection, MovementSystems};
 use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::MapData;
 use crate::player::{spawn_player, Player, DEFAULT_PLAYER_SPEED};
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
-
-const NUM_LEFT_TURNERS: u32 = 1;
-const NUM_RIGHT_TURNERS: u32 = NUM_LEFT_TURNERS;
 
 const DEFAULT_ENEMY_SPEED: f32 = 0.5 * DEFAULT_PLAYER_SPEED;
 
@@ -101,6 +98,7 @@ pub fn spawn_enemies(
     mut reservations: ResMut<GridReservations>,
     enemy_colors: Res<EnemyColors>,
     player_query: Query<&GridMover, With<Player>>,
+    enemy_group_size: Res<EnemyGroupSize>,
 ) {
     let player_pos = player_query.single().unwrap().grid_pos;
     info!("Spawning enemies, player position: {:?}", player_pos);
@@ -111,8 +109,11 @@ pub fn spawn_enemies(
         IVec2::new(-1, 0),
     ];
 
+    let num_left_turners = enemy_group_size.0;
+    let num_right_turners = num_left_turners;
+
     // Spawn LeftTurners
-    for _ in 0..NUM_LEFT_TURNERS {
+    for _ in 0..num_left_turners {
         let (spawn_pos, start_dir) = find_valid_spawn(
             &mut rng,
             &map_data,
@@ -151,7 +152,7 @@ pub fn spawn_enemies(
     }
 
     // Spawn RightTurners
-    for _ in 0..NUM_RIGHT_TURNERS {
+    for _ in 0..num_right_turners {
         let (spawn_pos, start_dir) = find_valid_spawn(
             &mut rng,
             &map_data,

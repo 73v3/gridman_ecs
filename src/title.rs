@@ -1,5 +1,6 @@
+// title.rs
 use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyGroupSize, GameEntity, GameState};
 use bevy::prelude::*;
 use bevy::state::app::AppExtStates;
 
@@ -8,7 +9,11 @@ pub struct TitlePlugin;
 impl Plugin for TitlePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GameState>()
-            .add_systems(OnEnter(GameState::Title), (spawn_title, cleanup_game))
+            .insert_resource(EnemyGroupSize(1))
+            .add_systems(
+                OnEnter(GameState::Title),
+                (spawn_title, cleanup_game, reset_enemy_count),
+            )
             .add_systems(OnExit(GameState::Title), despawn_title)
             .add_systems(
                 Update,
@@ -103,4 +108,8 @@ fn cleanup_game(mut commands: Commands, query: Query<Entity, With<GameEntity>>) 
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
+}
+
+fn reset_enemy_count(mut enemy_group_size: ResMut<EnemyGroupSize>) {
+    enemy_group_size.0 = 1;
 }

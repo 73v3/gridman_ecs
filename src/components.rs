@@ -34,6 +34,9 @@ pub struct GameSpeed {
     pub value: f32,
 }
 
+#[derive(Resource)]
+pub struct EnemyGroupSize(pub u32);
+
 pub struct ComponentsPlugin;
 
 impl Plugin for ComponentsPlugin {

@@ -2,7 +2,7 @@
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyGroupSize, GameEntity, GameState};
 use crate::enemy::Enemy;
 use crate::player::Player;
 
@@ -72,10 +72,13 @@ fn handle_victory_timer(
     mut timer: ResMut<VictoryTimer>,
     time: Res<Time>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut enemy_group_size: ResMut<EnemyGroupSize>,
 ) {
     timer.0.tick(time.delta());
     if timer.0.finished() {
-        next_state.set(GameState::Title);
+        const MAX_PER_TYPE: u32 = 2048;
+        enemy_group_size.0 = (enemy_group_size.0 * 2).min(MAX_PER_TYPE);
+        next_state.set(GameState::Playing);
     }
 }
 
