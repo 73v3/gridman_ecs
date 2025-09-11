@@ -21,6 +21,7 @@ use crate::score;
 use crate::tilemap;
 use crate::title;
 use crate::ui_scaling;
+use crate::victory;
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -50,6 +51,7 @@ impl Plugin for GamePlugin {
             enemy::EnemyPlugin,
             diagnostics::DiagnosticsPlugin,
             explosion::ExplosionPlugin,
+            victory::VictoryPlugin,
         ))
         .add_systems(Startup, setup_scene);
     }

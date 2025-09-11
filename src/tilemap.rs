@@ -9,8 +9,8 @@ use crate::map::MapData;
 use crate::random::random_colour;
 
 pub const TILE_SIZE: f32 = 64.0;
-pub const RENDERED_WIDTH: usize = 32;
-pub const RENDERED_HEIGHT: usize = 26;
+pub const RENDERED_WIDTH: usize = 36;
+pub const RENDERED_HEIGHT: usize = 28;
 pub const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 pub const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 /// Defines the size of one side of a checkerboard square, in tiles.

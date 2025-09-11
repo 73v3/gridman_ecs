@@ -2,36 +2,44 @@
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;
-use crate::components::{GameEntity, GameState};
+use crate::components::{EnemyDied, GameEntity, GameState};
+use crate::enemy::{spawn_enemies, Enemy}; // Added spawn_enemies import
 
 pub struct ScorePlugin;
 
 impl Plugin for ScorePlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ScoreChanged>()
-            .add_systems(OnEnter(GameState::Playing), setup_score)
-            .add_systems(
-                Update,
-                (update_score, update_score_display)
-                    .chain()
-                    .run_if(in_state(GameState::Playing)),
-            );
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            setup_enemy_count.after(spawn_enemies), // Ensure runs after enemies are spawned
+        )
+        .add_systems(
+            Update,
+            (update_enemy_count, update_enemy_count_display)
+                .chain()
+                .run_if(in_state(GameState::Playing)),
+        );
     }
 }
 
 #[derive(Resource)]
-pub struct Score {
+pub struct EnemyCount {
     pub value: u32,
 }
 
-#[derive(Event)]
-pub struct ScoreChanged;
-
 #[derive(Component)]
-struct ScoreText;
+struct EnemyCountText;
 
-fn setup_score(mut commands: Commands, game_assets: Res<GameAssets>) {
-    commands.insert_resource(Score { value: 0 });
+fn setup_enemy_count(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    enemy_query: Query<(), With<Enemy>>,
+) {
+    // Count the number of enemies at the start of the game
+    let initial_count = enemy_query.iter().len() as u32;
+    commands.insert_resource(EnemyCount {
+        value: initial_count,
+    });
 
     let root = commands
         .spawn((
@@ -52,7 +60,7 @@ fn setup_score(mut commands: Commands, game_assets: Res<GameAssets>) {
 
     commands.entity(root).with_children(|parent| {
         parent.spawn((
-            Text::new("0000".to_string()),
+            Text::new(format!("remaining: {}", initial_count)),
             TextFont {
                 font: game_assets.font.clone(),
                 font_size: 16.0,
@@ -60,24 +68,26 @@ fn setup_score(mut commands: Commands, game_assets: Res<GameAssets>) {
             },
             TextColor(game_assets.palette.colors[3]),
             TextLayout::new_with_justify(JustifyText::Center),
-            ScoreText,
+            EnemyCountText,
         ));
     });
 }
 
-fn update_score(mut score: ResMut<Score>, mut events: EventReader<ScoreChanged>) {
+fn update_enemy_count(mut enemy_count: ResMut<EnemyCount>, mut events: EventReader<EnemyDied>) {
     for _ in events.read() {
-        score.value += 1;
-        if score.value > 9999 {
-            score.value = 9999;
+        if enemy_count.value > 0 {
+            enemy_count.value -= 1;
         }
     }
 }
 
-fn update_score_display(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>) {
-    if score.is_changed() {
+fn update_enemy_count_display(
+    enemy_count: Res<EnemyCount>,
+    mut query: Query<&mut Text, With<EnemyCountText>>,
+) {
+    if enemy_count.is_changed() {
         if let Ok(mut text) = query.single_mut() {
-            text.0 = format!("{:04}", score.value);
+            text.0 = format!("remaining: {}", enemy_count.value);
         }
     }
 }

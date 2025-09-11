@@ -25,6 +25,7 @@ pub mod score;
 pub mod tilemap;
 pub mod title;
 pub mod ui_scaling;
+pub mod victory;
 
 fn main() {
     App::new()

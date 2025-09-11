@@ -2,7 +2,6 @@ use crate::collider::ProjectileCollision;
 use crate::components::{EnemyDied, GameState, PlayerDied};
 use crate::enemy::Enemy;
 use crate::player::Player;
-use crate::score::ScoreChanged;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -29,7 +28,6 @@ impl Plugin for ProjectilePlugin {
 fn handle_projectile_collisions(
     mut commands: Commands,
     mut collision_events: EventReader<ProjectileCollision>,
-    mut score_events: EventWriter<ScoreChanged>,
     mut player_died_events: EventWriter<PlayerDied>,
     mut enemy_died_events: EventWriter<EnemyDied>,
     // Query to determine if the victim was a Player or an Enemy.
@@ -44,14 +42,11 @@ fn handle_projectile_collisions(
             let pos = transform.translation;
             if is_player {
                 commands.entity(event.victim).despawn();
-
                 player_died_events.write(PlayerDied(pos));
                 info!("Player was hit by a projectile!");
             } else if is_enemy {
                 commands.entity(event.victim).despawn();
-
                 enemy_died_events.write(EnemyDied(pos));
-                score_events.write(ScoreChanged);
             }
         }
     }

@@ -1,3 +1,4 @@
+// components.rs
 use bevy::prelude::*;
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Hash, States, Debug)]
@@ -6,6 +7,7 @@ pub enum GameState {
     Loading,
     Title,
     Playing,
+    Victory,
 }
 
 #[derive(Component)]

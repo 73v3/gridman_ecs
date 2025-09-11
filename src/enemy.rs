@@ -15,7 +15,7 @@ use crate::player::{spawn_player, Player, DEFAULT_PLAYER_SPEED};
 use crate::random::{random_colour, random_float};
 use crate::tilemap::TILE_SIZE;
 
-const NUM_LEFT_TURNERS: u32 = 150;
+const NUM_LEFT_TURNERS: u32 = 1;
 const NUM_RIGHT_TURNERS: u32 = NUM_LEFT_TURNERS;
 
 const DEFAULT_ENEMY_SPEED: f32 = 0.5 * DEFAULT_PLAYER_SPEED;
@@ -93,7 +93,7 @@ fn setup_enemy_colors(
 }
 
 /// Spawns all initial enemies in random, valid locations.
-fn spawn_enemies(
+pub fn spawn_enemies(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,

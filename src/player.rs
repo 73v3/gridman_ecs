@@ -51,7 +51,7 @@ pub const DEFAULT_PLAYER_SPEED: f32 = 1000.0;
 
 /// Defines the size of the "camera deadzone" in tiles. The camera will not scroll
 /// until the player moves beyond this buffer area from the center of the screen.
-const BUFFER_TILES: Vec2 = Vec2::new(4.0, 4.0);
+const BUFFER_TILES: Vec2 = Vec2::new(2.0, 2.0);
 
 /// Constants for controlling the smoothness of the camera follow.
 /// BASE_TAU is the base time constant (in seconds) for the exponential lerp when the player is just outside the buffer.
