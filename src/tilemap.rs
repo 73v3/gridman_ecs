@@ -5,7 +5,7 @@ use bevy_rand::prelude::{GlobalEntropy, WyRand};
 
 use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
-use crate::map::MapData;
+use crate::map::{generate_map, MapData};
 use crate::random::random_colour;
 
 pub const TILE_SIZE: f32 = 64.0;
@@ -50,7 +50,8 @@ impl Plugin for TilemapPlugin {
                     setup_floor_palette, // Create the random palette
                     spawn_tilemap,
                 )
-                    .chain(),
+                    .chain()
+                    .after(generate_map),
             )
             .add_systems(
                 Update,
@@ -185,8 +186,7 @@ fn get_tile_color(
 
     if is_wall {
         // It's a wall, so calculate its color based on its position.
-        let index =
-            ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
+        let index = 13; // uncomment if you want walls to use entire palette -> ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
         game_assets.palette.colors[index]
     } else {
         // It's a floor tile, so apply the checkerboard pattern.

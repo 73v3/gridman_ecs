@@ -1,4 +1,3 @@
-// victory.rs
 use bevy::prelude::*;
 
 use crate::assets::GameAssets;

@@ -11,7 +11,7 @@ use crate::collider::Collider;
 use crate::components::{GameEntity, GameState};
 use crate::grid_movement::{is_wall, GridMover, IntendedDirection, MovementSystems};
 use crate::grid_reservation::{GridReservations, GridReserver};
-use crate::map::MapData;
+use crate::map::{generate_map, MapData};
 use crate::projectile::{Bouncable, Projectile};
 use crate::random::{random_colour, random_float};
 use crate::tilemap::{
@@ -27,18 +27,21 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), spawn_player)
-            .add_systems(
-                Update,
-                (
-                    // Player input systems are grouped in the `Input` set from MovementSystems.
-                    handle_player_input.in_set(MovementSystems::Input),
-                    handle_shoot.in_set(MovementSystems::Input),
-                    // Camera scrolling logic runs after the player's position has been updated.
-                    smooth_adjust_scroll.in_set(MovementSystems::AdjustScroll),
-                )
-                    .run_if(in_state(GameState::Playing)),
-            );
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            spawn_player.after(generate_map),
+        )
+        .add_systems(
+            Update,
+            (
+                // Player input systems are grouped in the `Input` set from MovementSystems.
+                handle_player_input.in_set(MovementSystems::Input),
+                handle_shoot.in_set(MovementSystems::Input),
+                // Camera scrolling logic runs after the player's position has been updated.
+                smooth_adjust_scroll.in_set(MovementSystems::AdjustScroll),
+            )
+                .run_if(in_state(GameState::Playing)),
+        );
     }
 }
 
