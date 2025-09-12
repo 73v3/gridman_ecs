@@ -1871,7 +1871,7 @@ use crate::grid_movement::{is_wall, GridMover, IntendedDirection, MovementSystem
 use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::{generate_map, MapData};
 use crate::projectile::{Bouncable, Projectile};
-use crate::random::{random_colour, random_float};
+use crate::random::random_float;
 use crate::tilemap::{
     MapOffset, TileOffset, HALF_HEIGHT, HALF_WIDTH, RENDERED_HEIGHT, RENDERED_WIDTH, TILE_SIZE,
 };
@@ -2031,7 +2031,6 @@ fn handle_shoot(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
-    mut rng: GlobalEntropy<WyRand>,
     game_assets: Res<GameAssets>,
     query: Query<(&GridMover, &IntendedDirection), With<Player>>,
     map_data: Res<MapData>,
@@ -2048,7 +2047,7 @@ fn handle_shoot(
                 if is_wall(spawn_pos, &map_data) {
                     return;
                 }
-                let color = random_colour(&mut rng, &game_assets);
+                let color = game_assets.palette.colors[5]; // Use palette index 5 for initial color.
 
                 // Spawn the projectile entity.
                 commands.spawn((
@@ -2063,11 +2062,11 @@ fn handle_shoot(
                         grid_pos: spawn_pos,
                         direction: dir,
                         progress: 0.0,
-                        speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
+                        speed: mover.speed * 1.5, // Projectiles are 1.5x faster than player.
                     },
                     IntendedDirection(dir), // The projectile continues in the player's direction.
                     Bouncable {
-                        initial: 3, // if a projectile has bounced at least once, it can now hit the player
+                        initial: 3, // If a projectile has bounced at least once, it can now hit the player.
                         remaining: 3,
                     }, // Can bounce off walls 3 times.
                     Collider {
@@ -2157,9 +2156,12 @@ fn smooth_adjust_scroll(
 </player.rs>
 
 <projectile.rs>
+// projectile.rs
+use crate::assets::GameAssets;
 use crate::collider::ProjectileCollision;
 use crate::components::{EnemyDied, GameState, PlayerDied};
 use crate::enemy::Enemy;
+use crate::grid_movement::MovementSystems;
 use crate::player::Player;
 use bevy::prelude::*;
 
@@ -2178,7 +2180,11 @@ impl Plugin for ProjectilePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            handle_projectile_collisions.run_if(in_state(GameState::Playing)),
+            (
+                handle_projectile_collisions,
+                update_projectile_colors.after(MovementSystems::UpdateMover),
+            )
+                .run_if(in_state(GameState::Playing)),
         );
     }
 }
@@ -2210,13 +2216,25 @@ fn handle_projectile_collisions(
         }
     }
 }
+
+/// Updates the color of projectiles after their first bounce to palette index 3.
+fn update_projectile_colors(
+    game_assets: Res<GameAssets>,
+    mut query: Query<(&Bouncable, &mut Sprite), With<Projectile>>,
+) {
+    for (bouncable, mut sprite) in &mut query {
+        // Check if the projectile has bounced exactly once.
+        if bouncable.initial - bouncable.remaining == 1 {
+            sprite.color = game_assets.palette.colors[3]; // Set to palette index 3 (orange-red).
+        }
+    }
+}
 </projectile.rs>
 
 <random.rs>
 // src/random.rs
 
 use bevy::prelude::*;
-// Import WyRand and the necessary query components from bevy_rand
 use bevy_rand::prelude::{EntropyPlugin, GlobalEntropy, WyRand};
 
 use crate::assets::GameAssets;
@@ -2240,6 +2258,7 @@ impl Plugin for RandomPlugin {
     }
 }
 
+/// Returns a random float between 0.0 and 1.0
 pub fn random_float(rng: &mut GlobalEntropy<WyRand>) -> f32 {
     (rng.next_u32() as f32) / (u32::MAX as f32)
 }
@@ -2249,6 +2268,41 @@ pub fn random_colour(rng: &mut GlobalEntropy<WyRand>, game_assets: &Res<GameAsse
     let palette = &game_assets.palette;
     let index = (random_float(rng) * palette.colors.len() as f32) as usize;
     palette.colors[index]
+}
+
+/// Returns a random color from the GameAssets palette, excluding the specified color.
+/// If the palette is empty or only contains the excluded color, returns Color::WHITE.
+pub fn random_colour_except(
+    rng: &mut GlobalEntropy<WyRand>,
+    game_assets: &Res<GameAssets>,
+    except_colour: Color,
+) -> Color {
+    let palette = &game_assets.palette;
+
+    // Handle empty palette
+    if palette.colors.is_empty() {
+        return Color::WHITE;
+    }
+
+    // Find the index of the excluded color, if it exists
+    let exclude_index = palette.colors.iter().position(|&c| c == except_colour);
+
+    // If palette has only one color and it's the excluded one, return fallback
+    if palette.colors.len() == 1 && exclude_index == Some(0) {
+        return Color::WHITE;
+    }
+
+    // Calculate the range for random selection (subtract 1 if excluding a color)
+    let range = palette.colors.len() - exclude_index.map_or(0, |_| 1);
+    let idx = (random_float(rng) * range as f32) as usize;
+
+    // Adjust index to skip the excluded color
+    let final_index = match exclude_index {
+        Some(ex) if idx >= ex => idx + 1,
+        _ => idx,
+    };
+
+    palette.colors[final_index]
 }
 </random.rs>
 
@@ -2449,7 +2503,7 @@ use bevy_rand::prelude::{GlobalEntropy, WyRand};
 use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
 use crate::map::{generate_map, MapData};
-use crate::random::random_colour;
+use crate::random::random_colour_except;
 
 pub const TILE_SIZE: f32 = 64.0;
 pub const RENDERED_WIDTH: usize = 36;
@@ -2458,6 +2512,8 @@ pub const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 pub const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 /// Defines the size of one side of a checkerboard square, in tiles.
 pub const CHECKER_SIZE: u32 = 4;
+
+pub const WALL_COLOUR_INDEX: usize = 13; // colour of wall in terms of asset palette index
 
 #[derive(Resource)]
 pub struct MapOffset(pub IVec2);
@@ -2507,29 +2563,29 @@ impl Plugin for TilemapPlugin {
 }
 
 /// A new system that runs once to create and store the floor palette.
-/// It picks two random colors, darkens them, and inserts them as a resource.
+/// It picks two random colors, excluding the wall color, darkens them, and inserts them as a resource.
 fn setup_floor_palette(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,
 ) {
-    // pick 2 random different colours from our palette
-    let mut color_a = random_colour(&mut rng, &game_assets);
-    let mut color_b = random_colour(&mut rng, &game_assets);
+    // Get the wall color to exclude
+    let wall_color = game_assets.palette.colors[WALL_COLOUR_INDEX];
+
+    // Pick two random different colors, excluding the wall color
+    let mut color_a = random_colour_except(&mut rng, &game_assets, wall_color);
+    let mut color_b = random_colour_except(&mut rng, &game_assets, wall_color);
     while color_a == color_b {
-        color_b = random_colour(&mut rng, &game_assets);
+        color_b = random_colour_except(&mut rng, &game_assets, wall_color);
     }
 
-    // darken them
+    // Darken them
     let darken_factor = 0.25;
     color_a = darken(color_a, darken_factor);
     color_b = darken(color_b, darken_factor);
 
-    // and insert them into a resource
-    commands.insert_resource(FloorPalette {
-        color_a: color_a,
-        color_b: color_b,
-    });
+    // Insert them into a resource
+    commands.insert_resource(FloorPalette { color_a, color_b });
 }
 
 fn darken(c: Color, darken_factor: f32) -> Color {
@@ -2544,7 +2600,7 @@ fn darken(c: Color, darken_factor: f32) -> Color {
     }
 }
 
-// center map in viewport
+// Center map in viewport
 fn setup_initial_offset(map_data: Res<MapData>, mut map_offset: ResMut<MapOffset>) {
     let view_w = RENDERED_WIDTH as i32;
     let view_h = RENDERED_HEIGHT as i32;
@@ -2554,7 +2610,7 @@ fn setup_initial_offset(map_data: Res<MapData>, mut map_offset: ResMut<MapOffset
     map_offset.0.y = ((map_h - view_h) / 2).max(0);
 }
 
-// spawns the viewable section of the tilemap, with each visible tile being an individual sprite entity
+// Spawns the viewable section of the tilemap, with each visible tile being an individual sprite entity
 fn spawn_tilemap(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
@@ -2629,7 +2685,7 @@ fn get_tile_color(
 
     if is_wall {
         // It's a wall, so calculate its color based on its position.
-        let index = 13; // uncomment if you want walls to use entire palette -> ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
+        let index = WALL_COLOUR_INDEX; // uncomment if you want walls to use entire palette -> ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
         game_assets.palette.colors[index]
     } else {
         // It's a floor tile, so apply the checkerboard pattern.

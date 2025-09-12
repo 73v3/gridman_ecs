@@ -13,7 +13,7 @@ use crate::grid_movement::{is_wall, GridMover, IntendedDirection, MovementSystem
 use crate::grid_reservation::{GridReservations, GridReserver};
 use crate::map::{generate_map, MapData};
 use crate::projectile::{Bouncable, Projectile};
-use crate::random::{random_colour, random_float};
+use crate::random::random_float;
 use crate::tilemap::{
     MapOffset, TileOffset, HALF_HEIGHT, HALF_WIDTH, RENDERED_HEIGHT, RENDERED_WIDTH, TILE_SIZE,
 };
@@ -173,7 +173,6 @@ fn handle_shoot(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
-    mut rng: GlobalEntropy<WyRand>,
     game_assets: Res<GameAssets>,
     query: Query<(&GridMover, &IntendedDirection), With<Player>>,
     map_data: Res<MapData>,
@@ -190,7 +189,7 @@ fn handle_shoot(
                 if is_wall(spawn_pos, &map_data) {
                     return;
                 }
-                let color = random_colour(&mut rng, &game_assets);
+                let color = game_assets.palette.colors[5]; // Use palette index 5 for initial color.
 
                 // Spawn the projectile entity.
                 commands.spawn((
@@ -205,11 +204,11 @@ fn handle_shoot(
                         grid_pos: spawn_pos,
                         direction: dir,
                         progress: 0.0,
-                        speed: mover.speed * 1.5, // projectiles are always 1.5x faster than player
+                        speed: mover.speed * 1.5, // Projectiles are 1.5x faster than player.
                     },
                     IntendedDirection(dir), // The projectile continues in the player's direction.
                     Bouncable {
-                        initial: 3, // if a projectile has bounced at least once, it can now hit the player
+                        initial: 3, // If a projectile has bounced at least once, it can now hit the player.
                         remaining: 3,
                     }, // Can bounce off walls 3 times.
                     Collider {

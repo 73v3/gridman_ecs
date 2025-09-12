@@ -1,6 +1,9 @@
+// projectile.rs
+use crate::assets::GameAssets;
 use crate::collider::ProjectileCollision;
 use crate::components::{EnemyDied, GameState, PlayerDied};
 use crate::enemy::Enemy;
+use crate::grid_movement::MovementSystems;
 use crate::player::Player;
 use bevy::prelude::*;
 
@@ -19,7 +22,11 @@ impl Plugin for ProjectilePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            handle_projectile_collisions.run_if(in_state(GameState::Playing)),
+            (
+                handle_projectile_collisions,
+                update_projectile_colors.after(MovementSystems::UpdateMover),
+            )
+                .run_if(in_state(GameState::Playing)),
         );
     }
 }
@@ -48,6 +55,19 @@ fn handle_projectile_collisions(
                 commands.entity(event.victim).despawn();
                 enemy_died_events.write(EnemyDied(pos));
             }
+        }
+    }
+}
+
+/// Updates the color of projectiles after their first bounce to palette index 3.
+fn update_projectile_colors(
+    game_assets: Res<GameAssets>,
+    mut query: Query<(&Bouncable, &mut Sprite), With<Projectile>>,
+) {
+    for (bouncable, mut sprite) in &mut query {
+        // Check if the projectile has bounced exactly once.
+        if bouncable.initial - bouncable.remaining == 1 {
+            sprite.color = game_assets.palette.colors[3]; // Set to palette index 3 (orange-red).
         }
     }
 }

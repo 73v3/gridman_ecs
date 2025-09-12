@@ -6,7 +6,7 @@ use bevy_rand::prelude::{GlobalEntropy, WyRand};
 use crate::assets::GameAssets;
 use crate::components::{GameEntity, GameState};
 use crate::map::{generate_map, MapData};
-use crate::random::random_colour;
+use crate::random::random_colour_except;
 
 pub const TILE_SIZE: f32 = 64.0;
 pub const RENDERED_WIDTH: usize = 36;
@@ -15,6 +15,8 @@ pub const HALF_WIDTH: f32 = (RENDERED_WIDTH as f32 - 1.0) / 2.0;
 pub const HALF_HEIGHT: f32 = (RENDERED_HEIGHT as f32 - 1.0) / 2.0;
 /// Defines the size of one side of a checkerboard square, in tiles.
 pub const CHECKER_SIZE: u32 = 4;
+
+pub const WALL_COLOUR_INDEX: usize = 13; // colour of wall in terms of asset palette index
 
 #[derive(Resource)]
 pub struct MapOffset(pub IVec2);
@@ -64,29 +66,29 @@ impl Plugin for TilemapPlugin {
 }
 
 /// A new system that runs once to create and store the floor palette.
-/// It picks two random colors, darkens them, and inserts them as a resource.
+/// It picks two random colors, excluding the wall color, darkens them, and inserts them as a resource.
 fn setup_floor_palette(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
     mut rng: GlobalEntropy<WyRand>,
 ) {
-    // pick 2 random different colours from our palette
-    let mut color_a = random_colour(&mut rng, &game_assets);
-    let mut color_b = random_colour(&mut rng, &game_assets);
+    // Get the wall color to exclude
+    let wall_color = game_assets.palette.colors[WALL_COLOUR_INDEX];
+
+    // Pick two random different colors, excluding the wall color
+    let mut color_a = random_colour_except(&mut rng, &game_assets, wall_color);
+    let mut color_b = random_colour_except(&mut rng, &game_assets, wall_color);
     while color_a == color_b {
-        color_b = random_colour(&mut rng, &game_assets);
+        color_b = random_colour_except(&mut rng, &game_assets, wall_color);
     }
 
-    // darken them
+    // Darken them
     let darken_factor = 0.25;
     color_a = darken(color_a, darken_factor);
     color_b = darken(color_b, darken_factor);
 
-    // and insert them into a resource
-    commands.insert_resource(FloorPalette {
-        color_a: color_a,
-        color_b: color_b,
-    });
+    // Insert them into a resource
+    commands.insert_resource(FloorPalette { color_a, color_b });
 }
 
 fn darken(c: Color, darken_factor: f32) -> Color {
@@ -101,7 +103,7 @@ fn darken(c: Color, darken_factor: f32) -> Color {
     }
 }
 
-// center map in viewport
+// Center map in viewport
 fn setup_initial_offset(map_data: Res<MapData>, mut map_offset: ResMut<MapOffset>) {
     let view_w = RENDERED_WIDTH as i32;
     let view_h = RENDERED_HEIGHT as i32;
@@ -111,7 +113,7 @@ fn setup_initial_offset(map_data: Res<MapData>, mut map_offset: ResMut<MapOffset
     map_offset.0.y = ((map_h - view_h) / 2).max(0);
 }
 
-// spawns the viewable section of the tilemap, with each visible tile being an individual sprite entity
+// Spawns the viewable section of the tilemap, with each visible tile being an individual sprite entity
 fn spawn_tilemap(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
@@ -186,7 +188,7 @@ fn get_tile_color(
 
     if is_wall {
         // It's a wall, so calculate its color based on its position.
-        let index = 13; // uncomment if you want walls to use entire palette -> ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
+        let index = WALL_COLOUR_INDEX; // uncomment if you want walls to use entire palette -> ((map_pos.x.abs() + map_pos.y.abs()) as usize) % game_assets.palette.colors.len();
         game_assets.palette.colors[index]
     } else {
         // It's a floor tile, so apply the checkerboard pattern.
