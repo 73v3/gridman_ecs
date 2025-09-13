@@ -5,7 +5,7 @@ This project was created as a learning exercise to understand Rust and Bevy's EC
 You will certainly find areas where the code could be improved. Please feel free to open issues or submit pull requests with suggestions!
 
 <div align="center">
-  <img src="assets/screenshot.png" alt="Screenshot of Gridman ECS" width="50%"/>
+  <img src="assets/textures/screenshot.png" alt="Screenshot of Gridman ECS" width="50%"/>
   <p>Screenshot of the Gridman ECS game in action.</p>
 </div>
 
