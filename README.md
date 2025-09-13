@@ -2,7 +2,7 @@
 
 This project was created as a learning exercise to understand Rust and Bevy's ECS paradigm. I have only been learning Rust and Bevy for two weeks, and this is my second application.
 
-You will certainly find areas where the code could be improved. Please feel free to open issues or submit pull requests with suggestions!
+You will certainly find areas where the code could be improved. Please feel free to offer suggestions!
 
 <div align="center">
   <img src="assets/textures/screenshot.png" alt="Screenshot of Gridman ECS" width="50%"/>
