@@ -24,8 +24,6 @@ Space or Left Mouse Click: Shoot a projectile in the player's current direction.
 
 Escape: Close the game window.
 
-End: Log a debug message (for testing purposes).
-
 ## Gameplay:
 
 Navigate the procedurally generated map, avoid enemies, and shoot projectiles to destroy them.
@@ -38,11 +36,12 @@ I'm actually surprised how something this simple can still be kind of fun.
 
 ## Assets
 
-All assets (textures, sounds, and fonts) are included in the assets/ directory and are licensed under the MIT License. The color palette is based on [Sweetie-16](https://lospec.com/palette-list/sweetie-16) by GrafxKid.
+The font "Press Start 2P" (cody@zone38.net) is licensed under the SIL OPEN FONT LICENSE Version 1.1
+The color palette is [Sweetie-16](https://lospec.com/palette-list/sweetie-16) by GrafxKid.
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file on GitHub for details. All code and assets are free to use, modify, and distribute under the terms of the MIT License.
+This project, with the exception of the font, is licensed under the MIT License. See the LICENSE file on GitHub for details.
 
 ## Installation
 
