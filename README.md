@@ -11,13 +11,15 @@ You will certainly find areas where the code could be improved. Please feel free
 
 ## Demonstrates:
 
-- Tile-Based Scrolling: A camera system that smoothly follows the player while keeping the map centered within the viewport.
+- Tile-Based Scrolling: The camera remains fixed whilst the maps scrolls beneath it, with border artefacts hidden by sprite blocks.
 
 - Procedural Map Generation: Generates random maps using a random walk algorithm to carve out paths in a grid-based world.
 
-- Grid-Based Movement: Entities (player, enemies, projectiles) move discretely across a grid, with smooth interpolation for visual rendering.
+- Grid-Based Movement: Entities (player, enemies, projectiles) move 1 tile at a time, with players and enemies reserving that space in advance.
 
-- Collision Detection: Implements Axis-Aligned Bounding Box (AABB) collision detection for projectiles and adjacency-based collision for player-enemy interactions.
+- Collision Detection: Combines (AABB) collision detection and adjacency-based collision for performant player-enemy-projectile interactions.
+
+- Responsive Resizing: All game elements automatically resize in response to window size changes.
 
 - State Management: Manages different game states (Loading, Title, Playing, Victory) to control game flow.
 
@@ -27,7 +29,7 @@ W, A, S, D: Move the player up, left, down, or right on the grid.
 
 Space or Left Mouse Click: Shoot a projectile in the player's current direction.
 
-Escape: Close the game window.
+Escape: Quit game.
 
 ## Gameplay:
 
@@ -35,7 +37,9 @@ Navigate the procedurally generated map, avoid enemies, and shoot projectiles to
 
 Beware your bullet rebounds!
 
-Clear all enemies to achieve victory, which doubles the enemy count for the next round.
+Clear all enemies to achieve level victory, which doubles the enemy count for the next round.
+
+1 mistake and the game is over.
 
 I'm actually surprised how something this simple can still be kind of fun.
 
