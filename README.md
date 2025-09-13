@@ -1,4 +1,3 @@
-# gridman_ecs
 ## A simple grid-based game in Bevy 0.16.1.
 
 This project was created as a learning exercise to understand Rust and Bevy's ECS paradigm. I have only been learning Rust and Bevy for two weeks, and this is my second application.
