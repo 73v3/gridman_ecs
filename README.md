@@ -4,6 +4,11 @@ This project was created as a learning exercise to understand Rust and Bevy's EC
 
 You will certainly find areas where the code could be improved. Please feel free to open issues or submit pull requests with suggestions!
 
+<div align="center">
+  <img src="assets/screenshot.png" alt="Screenshot of Gridman ECS" width="50%"/>
+  <p>Screenshot of the Gridman ECS game in action.</p>
+</div>
+
 ## Demonstrates:
 
 - Tile-Based Scrolling: A camera system that smoothly follows the player while keeping the map centered within the viewport.
@@ -37,11 +42,12 @@ I'm actually surprised how something this simple can still be kind of fun.
 ## Assets
 
 The font "Press Start 2P" (cody@zone38.net) is licensed under the SIL OPEN FONT LICENSE Version 1.1
+
 The color palette is [Sweetie-16](https://lospec.com/palette-list/sweetie-16) by GrafxKid.
 
 ## License
 
-This project, with the exception of the font, is licensed under the MIT License. See the LICENSE file on GitHub for details.
+This project, with the exception of the font, is licensed under the MIT License. See the LICENSE file for details.
 
 ## Installation
 
