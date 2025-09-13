@@ -60,3 +60,7 @@ This project, with the exception of the font, is licensed under the MIT License.
 - Ensure [Rust](https://www.rust-lang.org/learn/get-started) and [Bevy 0.16](https://bevy.org/learn/quick-start/getting-started) dependencies are installed.
 - Clone this repository.
 - Run the game with cargo run.
+
+## Credit
+
+Should go to Grok for holding my hand through all this. Grok assisted with the design, solved countless syntax issues and was in general, a great learning partner in the project. See collated_src.txt in the assets folder for how I streamlined this process.
