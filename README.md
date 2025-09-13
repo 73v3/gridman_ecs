@@ -13,7 +13,7 @@ You will certainly find areas where the code could be improved. Please feel free
 
 - Tile-Based Scrolling: The camera remains fixed whilst the maps scrolls beneath it, with border artefacts hidden by sprite blocks.
 
-- Procedural Map Generation: Generates random maps using a random walk algorithm to carve out paths in a grid-based world.
+- Procedural Map Generation: Generates maps using a random walk algorithm to carve out paths.
 
 - Grid-Based Movement: Entities (player, enemies, projectiles) move 1 tile at a time, with players and enemies reserving that space in advance.
 
